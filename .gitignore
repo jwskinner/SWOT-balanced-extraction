@@ -1,0 +1,102 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# PyCharm/VSCode settings
+.idea/
+.vscode/
+
+# Pyre type checker
+.pyre/
+
+# mypy
+.mypy_cache/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Ignore notebooks outputs (optional)
+*.nbconvert.ipynb
+
+# IPython history
+.history
+
+# Local data, config, or runtime files
+*.sqlite3
+*.db
+*.log
+*.pot
+*.mo
+*.dat
+*.csv
+*.h5
+*.hdf5
+*.netcdf
+*.nc
+
+# Conda and pip environments
+*.conda
+*.env
+*.DS_Store
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Mac ._ files
+._*
+
+# VS Code project settings
+.vscode/
+
+# Editable install build files
+*.egg-info/
+
+# Ignore the SWOT_data folder
+SWOT_data/
