@@ -1,3 +1,7 @@
+import numpy as np
+import xarray as xr
+import xrft
+
 def sin2_window_func(n):
     '''sine-squared window function for spectral analysis normalized for unit variance'''
     return np.sqrt(8/3) * np.sin(np.pi * np.arange(n) / n) ** 2

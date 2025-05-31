@@ -1,3 +1,6 @@
+from math import sin, cos, sqrt, atan2, radians
+import numpy as np
+
 # Computes the distance between consecutive points in a track given their longitude and latitude.
 def distance(lon,lat):
     R = 6373.0

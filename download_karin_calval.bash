@@ -22,7 +22,7 @@ DOWNLOAD_LOCATION="./SWOT_data/CALVAL/Karin/"
 for i in $(seq 474 577)
 do
     echo "Starting download for cycle $i..."
-    podaac-data-downloader -c SWOT_L2_LR_SSH_D -d "$DOWNLOAD_LOCATION" --cycle $i
+    podaac-data-downloader -c SWOT_L2_LR_SSH_2.0 -d "$DOWNLOAD_LOCATION" --gr "Basic" --cycle $i   
     if [ $? -eq 0 ]; then
         echo "Successfully downloaded data for cycle $i."
     else
