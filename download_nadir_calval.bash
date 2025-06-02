@@ -16,7 +16,7 @@
 
 #  4) Change download location below and run this script
 
-DOWNLOAD_LOCATION="./SWOT_data/CALVAL/Nadir/"
+DOWNLOAD_LOCATION="/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/"
 
 # Loop through the sequence of cycle numbers and execute the podaac-data-downloader command
 for i in $(seq 474 577); do

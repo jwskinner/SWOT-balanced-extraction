@@ -14,20 +14,24 @@ import matplotlib.pyplot as plt
 
 #  ------- Functions for loading and processing SWOT data
 # Loads the SWOT files from the specified folder and aligns the KaRIn and Nadir files based on their cycles.
-def return_karin_files(filepath):
+def return_karin_files(filepath, pnum, basic = True):
     all_files = glob(filepath)
     files_with_numbers = [] # now order by pass to get order in time
     for filename in all_files:
-        match = re.search(r'Expert_(\d+)_(\d+)', filename)
+        if basic: 
+            match = re.search(r'Basic_(\d+)_(\d+)', filename)
+        else: 
+            match = re.search(r'Expert_(\d+)_(\d+)', filename)
         if match:
             cycle = int(match.group(1))
             pass_num = int(match.group(2))
-            files_with_numbers.append((filename, cycle, pass_num))
+            if pass_num == pnum:
+                files_with_numbers.append((filename, cycle, pass_num))
 
     files_with_numbers.sort(key=lambda x: x[1])
     return files_with_numbers
 
-def return_nadir_files(filepath_nadir, valid_cycles):
+def return_nadir_files(filepath_nadir, valid_cycles, pnum):
     all_files = glob(filepath_nadir)
     nadir_files = []
     for filename in all_files:
@@ -35,18 +39,24 @@ def return_nadir_files(filepath_nadir, valid_cycles):
         if match:
             cycle = int(match.group(1))
             pass_num = int(match.group(2))
-            if cycle in valid_cycles:
+            if cycle in valid_cycles and pass_num == pnum:
                 nadir_files.append((filename, cycle, pass_num))
     nadir_files.sort(key=lambda x: x[1])  # sort by cycle
     return nadir_files
 
-def load_swot_files(folder, folder_nadir):
-    filepath = os.path.join(folder, 'SWOT_L2_LR_SSH_Expert_*.nc')
-    filepath_nadir = os.path.join(folder_nadir, 'SWOT_GPR_*.nc')
+def return_swot_files(folder, pnum, basic = True):
     
-    karin_files_with_numbers = return_karin_files(filepath)
+    if basic: 
+        filepath = os.path.join(folder, 'SWOT_L2_LR_SSH_Basic_*.nc')
+    else: 
+        filepath = os.path.join(folder, 'SWOT_L2_LR_SSH_Expert_*.nc')
+    
+    filepath_nadir = os.path.join(folder, 'SWOT_GPR_*.nc')
+    
+    karin_files_with_numbers = return_karin_files(filepath, pnum, basic)
     karin_cycles = {cycle for _, cycle, _ in karin_files_with_numbers}
-    nadir_files_with_numbers = return_nadir_files(filepath_nadir, karin_cycles)
+
+    nadir_files_with_numbers = return_nadir_files(filepath_nadir, karin_cycles, pnum)
     
     karin_dict = {cycle: item for item, cycle, _ in karin_files_with_numbers}
     nadir_dict = {cycle: item for item, cycle, _ in nadir_files_with_numbers}
@@ -55,7 +65,24 @@ def load_swot_files(folder, folder_nadir):
     
     karin_aligned = [(karin_dict[c], c) for c in shared_cycles]
     nadir_aligned = [(nadir_dict[c], c) for c in shared_cycles]
+
     return karin_files_with_numbers, nadir_files_with_numbers, shared_cycles, karin_aligned, nadir_aligned
+
+
+def init_swot_arrays(num_shared_cycles, track_length, total_width, track_length_nadir):
+    """
+    Initializes arrays for SWOT KaRIn and Nadir data.
+    """
+    lat_karin  = np.full((num_shared_cycles, track_length, total_width), np.nan)
+    lon_karin  = np.full_like(lat_karin, np.nan)
+    ssha_karin = np.full_like(lat_karin, np.nan)
+    time_array = np.full((num_shared_cycles, track_length), np.nan)
+    ssha_nadir = np.full((num_shared_cycles, track_length_nadir), np.nan)
+    lat_nadir  = np.full_like(ssha_nadir, np.nan)
+    lon_nadir  = np.full_like(ssha_nadir, np.nan)
+    tide       = np.full((num_shared_cycles, track_length, total_width), np.nan)
+
+    return lat_karin, lon_karin, ssha_karin, time_array, ssha_nadir, lat_nadir, lon_nadir, tide
 
 
 # Returns the indices of the track in the KaRIn file that fall within the specified latitude range.
@@ -79,19 +106,16 @@ def get_nadir_track_indices(nadir_file, lat_min, lat_max):
     return indxs, track_length_nadir
 
 # Loads the KaRIn data for the specified cycles and processes it to extract SSH anomalies.
-def load_karin_data(shared_cycles, folder, pass_number, indx, swath_width, 
-                   lat_karin, lon_karin, ssha_karin, swh_karin, tide_karin):
+def load_karin_data(karin_files_with_numbers, indx, karin):
+    swath_width = karin.swath_width
     good_strips_list = []
     bad_strips_list = []
     num_useful_strips = 0
     num_bad_strips = 0
 
-    for n, cycle in enumerate(shared_cycles):
-        path = glob(folder + f'*_{int(cycle):03d}_{pass_number:03d}_*.nc')
-        if not path:
-            continue
-
-        data = nc.Dataset(path[0], 'r')
+    for n, (filename, cycle, pass_number) in enumerate(karin_files_with_numbers):
+  
+        data = nc.Dataset(filename, 'r')
 
         for side in [0, 1]:
             i0 = 34 * side + 5
@@ -105,8 +129,7 @@ def load_karin_data(shared_cycles, folder, pass_number, indx, swath_width,
             lat  = data['latitude'][indx, i0:i1]
             lon  = data['longitude'][indx, i0:i1]
             tvar = data['time'][indx]
-            swh = data['swh_karin'][indx, i0:i1]
-
+     
             # Removes bad sides completely
             # if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual):
             #     num_bad_strips += 1
@@ -115,14 +138,12 @@ def load_karin_data(shared_cycles, folder, pass_number, indx, swath_width,
             
             # Masks bad data points and leaves the rest 
             ssha_masked = np.where(qual, np.nan, ssha + xcor - tide) # mask the poor quality data
-            swh_masked = np.where(qual, np.nan, swh) # mask the poor quality data
             tide_masked = np.where(qual, np.nan, tide) # mask the poor quality data
             j = slice(0, swath_width) if side == 0 else slice(-swath_width, None)
-            lat_karin[n, :, j] = lat
-            lon_karin[n, :, j] = lon
-            ssha_karin[n, :, j] = ssha_masked
-            swh_karin[n, :, j] = swh_masked
-            tide_karin[n, :, j] = tide_masked
+            karin.lat[n, :, j] = lat
+            karin.lon[n, :, j] = lon
+            karin.ssh[n, :, j] = ssha_masked
+            karin.tide[n, :, j] = tide_masked
             num_useful_strips += 1
             good_strips_list.append((cycle, side))
 
@@ -130,32 +151,37 @@ def load_karin_data(shared_cycles, folder, pass_number, indx, swath_width,
 
     print(f"Number of good KaRIn strips: {num_useful_strips}")
     print(f"Number of bad KaRIn strips: {num_bad_strips}")
-    print(f"Good strips list: {len(good_strips_list)}")
+    print(f"Good strips list (cycle, side): {good_strips_list}")
     print(f"Bad strips list: {bad_strips_list}")
     return good_strips_list, bad_strips_list, num_useful_strips, num_bad_strips
 
-def process_karin_data(ssha_karin, swath_width, middle_width, cutoff_m=100e3, delta=2e3):
+def process_karin_data(karin, cutoff_m=100e3, delta=2e3):
     '''Processes the KaRIn data to remove the high-pass filtered time-mean and return SSH anomalies'''
+    swath_width = karin.swath_width
+    middle_width = karin.middle_width 
+    ssh_karin = karin.ssh
     
-    ssha_karin[:, :, swath_width:swath_width + middle_width] = np.nan # Fill middle section with NaN
-    ssha_karin_arr = np.asarray(ssha_karin, dtype=float)
+    ssh_karin[:, :, swath_width:swath_width + middle_width] = np.nan # Fill middle section with NaN
+    ssha_karin_arr = np.asarray(ssh_karin, dtype=float)
     nan_mask = np.isnan(ssha_karin_arr)
     ssha_karin_arr[nan_mask] = 0.0 # replace nans with 0.0 for the filter step
-    ssha_mean_karin = np.nanmean(ssha_karin_arr, axis=0)
+    ssh_mean = np.nanmean(ssha_karin_arr, axis=0)
 
     # Apply Gaussian filter to time mean
     sigma_m = cutoff_m / (2 * np.sqrt(2 * np.log(2)))
     sigma_pixels = sigma_m / delta
-    lowpass = gaussian_filter(ssha_mean_karin, sigma=(sigma_pixels, sigma_pixels), mode='reflect')
+    lowpass = gaussian_filter(ssh_mean, sigma=(sigma_pixels, sigma_pixels), mode='reflect')
     lowpass[:, swath_width:swath_width + middle_width] = np.nan
     
-    ssha_highpass_karin = ssha_mean_karin - lowpass
-    ssha_anom_karin = ssha_karin - ssha_highpass_karin[None, :, :]
-    ssha_anom_karin[nan_mask] = np.nan  # Restore NaN mask in anomalies
-    return ssha_mean_karin, ssha_highpass_karin, ssha_anom_karin
+    ssh_mean_highpass = ssh_mean - lowpass
+    ssha = ssh_karin - ssh_mean_highpass[None, :, :]
+    ssha[nan_mask] = np.nan  # Restore NaN mask in anomalies
+    karin.ssh_mean = ssh_mean
+    karin.ssha_mean_highpass = ssh_mean_highpass
+    karin.ssha = ssha
+    return 
 
-def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, 
-                   ssha_nadir, lat_nadir, lon_nadir, track_length_nadir):
+def load_nadir_data(nadir_files_with_numbers, indxs, nadir):
     num_good_cycles = 0
     num_bad_cycles = 0
     
@@ -165,7 +191,6 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max,
         
         lats = group['latitude'][:]
         lons = data['data_01']['longitude'][:]
-        indxs = np.where((lats >= lat_min) & (lats <= lat_max))[0]
         
         if len(indxs) == 0 or len(group['ku']['ssha']) <= indxs[-1]:
             num_bad_cycles += 1
@@ -181,27 +206,31 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max,
             continue
         
         num_good_cycles += 1
-        n_valid = min(track_length_nadir, len(indxs))
-        lat_nadir[n, :n_valid] = lats[indxs[:n_valid]]
-        lon_nadir[n, :n_valid] = lons[indxs[:n_valid]]
-        ssha_nadir[n, :n_valid] = ssha[:n_valid].filled(np.nan)
+        n_valid = min(nadir.track_length, len(indxs))
+        nadir.lat[n, :n_valid] = lats[indxs[:n_valid]]
+        nadir.lon[n, :n_valid] = lons[indxs[:n_valid]]
+        nadir.ssh[n, :n_valid] = ssha[:n_valid].filled(np.nan)
         data.close()
     
     print(f"Number of good nadir cycles: {num_good_cycles}")
     print(f"Number of bad nadir cycles: {num_bad_cycles}")
     return num_good_cycles, num_bad_cycles
 
-def process_nadir_data(ssha_nadir, cutoff_m=100e3, delta=6.8e3):
+def process_nadir_data(nadir, cutoff_m=100e3, delta=6.8e3, ):
+    ssha_nadir = nadir.ssh
     ssha_mean_nadir = np.nanmean(ssha_nadir, axis=0)
     
-    # Apply Gaussian filter to the time mean
+    # Apply Gaussian filter to the time mean as for the karin data
     sigma_m = cutoff_m / (2 * np.sqrt(2 * np.log(2)))
     sigma_pixels = sigma_m / delta
     lowpass = gaussian_filter(ssha_mean_nadir, sigma=(sigma_pixels), mode='reflect')
     
     # Calculate high-pass residual and anomalies
     ssha_highpass_nadir = ssha_mean_nadir - lowpass
-    ssha_anom_nadir = ssha_nadir# - ssha_highpass_nadir[None, :] # We dont remove the time mean from the nadir because its large scale signal
-    return ssha_mean_nadir, ssha_highpass_nadir, ssha_anom_nadir
+    ssha_anom_nadir = ssha_nadir - ssha_mean_nadir # We dont remove the time mean from the nadir because its large scale signal
+    nadir.ssh_mean = ssha_mean_nadir
+    nadir.ssha_mean_highpass = ssha_highpass_nadir
+    nadir.ssha = ssha_anom_nadir 
+    return
 
 

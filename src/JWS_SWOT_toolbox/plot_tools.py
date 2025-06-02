@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 def set_plot_style(font='Fira Sans'):
     plt.rcParams['font.family'] = 'sans-serif'
     plt.rcParams['font.sans-serif'] = [font, 'DejaVu Sans', 'Arial', 'Liberation Sans', 'Verdana']

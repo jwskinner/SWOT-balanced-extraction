@@ -6,3 +6,4 @@ from .plot_tools import *
 from .geometry_tools import * 
 from .spectral_fits import * 
 from .guassian_process import *
+from .data_classes import * 

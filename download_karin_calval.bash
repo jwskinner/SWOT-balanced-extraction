@@ -16,10 +16,10 @@
 
 #  4) Change download location below and run this script
 
-DOWNLOAD_LOCATION="./SWOT_data/CALVAL/Karin/"
+DOWNLOAD_LOCATION="/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/"
 
 # Loop through the sequence of cycle numbers and execute the podaac-data-downloader command
-for i in $(seq 474 577)
+for i in $(seq 496 577)
 do
     echo "Starting download for cycle $i..."
     podaac-data-downloader -c SWOT_L2_LR_SSH_2.0 -d "$DOWNLOAD_LOCATION" --gr "Basic" --cycle $i   
