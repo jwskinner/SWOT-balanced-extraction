@@ -100,3 +100,10 @@ Thumbs.db
 
 # Ignore the SWOT_data folder
 SWOT_data/
+
+# ignore the slurm files 
+*.out 
+
+# ignore my notebooks for now 
+*.ipynb
+
