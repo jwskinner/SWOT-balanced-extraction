@@ -18,7 +18,13 @@ def cov(s, n, L):
     print(f"Variance from covariance: {C_r[0]:8.6f}")
     return scipy.interpolate.interp1d(r, C_r, kind='linear', bounds_error=False, fill_value="extrapolate")
 
-def make_karin_points(nx, ny, gap, delta_k):
+def make_karin_points(karin):
+    
+    nx = karin.track_length
+    ny = 2 * karin.swath_width
+    gap = karin.middle_width
+    delta_k = karin.dx
+
     xk_1d = np.arange(0.5, nx, 1) * delta_k
     yk_1d_upper = np.arange(0.5, ny // 2, 1) * delta_k
     yk_1d_lower = np.arange(ny // 2 + gap + 0.5, ny + gap, 1) * delta_k
@@ -26,12 +32,20 @@ def make_karin_points(nx, ny, gap, delta_k):
     Xk, Yk = np.meshgrid(xk_1d, yk_1d)
     return Xk.flatten(), Yk.flatten()
 
-def make_nadir_points(nn, ny, gap, delta_k, delta_n):
+def make_nadir_points(karin, nadir):
+    nn = nadir.track_length
+    ny = 2*karin.swath_width
+    delta_k = karin.dx
+    delta_n = nadir.dy
+    gap = karin.middle_width
+
     xn = (np.arange(0.5, nn, 1)) * delta_n
     yn = (ny // 2 + gap / 2) * delta_k * np.ones(nn)
+
     return xn, yn
 
 def build_covariance_matrix(cov_func, x, y):
+    print("Calculating covariance matrices...")
     return cov_func(np.hypot(x[:, None] - x, y[:, None] - y))
 
 def build_noise_matrix(nk_func, xk, yk, sigma, nn, n_obs):
@@ -59,13 +73,15 @@ def generate_signal_and_noise(F, Fk, sigma, nxny, nn):
     eta = np.concatenate((eta_k, eta_n))
     return h, eta, eta_k, eta_n
 
-def make_target_grid(nx, ny, gap, delta_k):
-    nxt = nx
-    nyt = ny + gap
-    xt_1d = np.arange(0.5, nxt, 1) * delta_k
-    yt_1d = np.arange(0.5, nyt, 1) * delta_k
+def make_target_grid(karin):
+    nx = karin.track_length
+    ny = karin.total_width
+    delta_kx = karin.dx
+    delta_ky = karin.dy
+    xt_1d = np.arange(0.5, nx, 1) * delta_kx
+    yt_1d = np.arange(0.5, ny, 1) * delta_ky
     Xt, Yt = np.meshgrid(xt_1d, yt_1d)
-    return Xt.flatten(), Yt.flatten(), nxt, nyt
+    return Xt.flatten(), Yt.flatten(), nx, ny
 
 def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     print("Estimating signal on target points...")

@@ -10,7 +10,7 @@ def mean_power_spectrum(data, window, dim, average_dims, pers_check=True):
     '''Computes the power spectrum using xarray'''
     #pspec = xrft.power_spectrum(data, dim=dim, window='tukey', window_correction=True, scaling='density') # we can test other windows
     pspec = xrft.power_spectrum(data * window, dim=dim)
-    return 2 * pspec.mean(dim=average_dims) #(factor of two is because we use one sided spectrum)
+    return 2 * pspec.mean(dim=average_dims) # (factor of two is because we use one sided spectrum)
 
 def onesided_spectrum(data,  window, dx = 2e3):
     '''Computes the one-sided power spectrum using RFFT'''

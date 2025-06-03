@@ -19,11 +19,13 @@ class KarinData:
         self.dy = 1e3 * swot.haversine_dx(self.lon[samp_indx, 0, :], self.lat[samp_indx, 0, :])
         print(f"KaRIn spacing: dx = {self.dx:.2f} m, dy = {self.dy:.2f} m")
 
-    def coordinates(self): 
+    def coordinates(self): # Returns the full grid coordinates
         self.y_coord    = self.dy * np.arange(self.track_length)
-        self.x_coord    = self.dx * np.arange(self.total_width)
+        self.x_coord    = self.dx * np.arange(self.total_width) # Total points in grid 
+        self.x_obs      = self.dx * np.arange(self.total_width - self.middle_width) # Observed points in grid (i.e., remove the gap)
         self.t_coord    = np.arange(self.num_cycles)
         self.x_grid, self.y_grid     = np.meshgrid(self.x_coord, self.y_coord)
+
 
 class NadirData:
     def __init__(self, num_cycles, track_length_nadir):

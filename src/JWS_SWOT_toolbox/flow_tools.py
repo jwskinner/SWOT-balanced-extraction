@@ -1,3 +1,5 @@
+import numpy as np
+
 def spatial_mean(anom, dims):
     '''returns spatial mean over specified dimensions'''
     return anom.mean(dim=dims, skipna=True)
