@@ -87,6 +87,11 @@ def init_swot_arrays(num_shared_cycles, track_length, total_width, track_length_
 
 # Returns the indices of the track in the KaRIn file that fall within the specified latitude range.
 def get_karin_track_indices(karin_file, lat_min, lat_max):
+    
+    if lat_min > lat_max: # I made this mistake too many times...
+        print("Error: lat_max must be larger than lat_min.")
+        return [], 0
+    
     karin_ref = nc.Dataset(karin_file, 'r')
     fp_latitude = karin_ref['latitude']
     mid_col = fp_latitude.shape[1] // 2
@@ -131,14 +136,16 @@ def load_karin_data(karin_files_with_numbers, indx, karin):
             tvar = data['time'][indx]
      
             # Removes bad sides completely
-            # if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual):
-            #     num_bad_strips += 1
-            #     bad_strips_list.append((cycle, side))
-            #     continue
+            if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual):
+                num_bad_strips += 1
+                bad_strips_list.append((cycle, side))
+                #continue
             
             # Masks bad data points and leaves the rest 
             ssha_masked = np.where(qual, np.nan, ssha + xcor - tide) # mask the poor quality data
             tide_masked = np.where(qual, np.nan, tide) # mask the poor quality data
+
+            
             j = slice(0, swath_width) if side == 0 else slice(-swath_width, None)
             karin.lat[n, :, j] = lat
             karin.lon[n, :, j] = lon
@@ -147,38 +154,50 @@ def load_karin_data(karin_files_with_numbers, indx, karin):
             num_useful_strips += 1
             good_strips_list.append((cycle, side))
 
-        # Now perform a variance check on the SSH data to remove any strips with high variance
-        good_strips_list_clean, num_useful_strips = remove_outlier_strips(karin.ssh, np.array(good_strips_list), threshold=10)
-        removed = set(np.array(good_strips_list)[:,0]) - set(good_strips_list_clean[:,0])
-    
-        # Store results
-        karin.good_strips_list = good_strips_list_clean
-        karin.removed_strips = list(removed)
-        karin.num_useful_strips = num_useful_strips
-        data.close()
+    # After loop and loading all strips
+    threshold = 10
+    ssha_array = np.copy(karin.ssh)
+    varts = np.nanvar(ssha_array, axis=(1,2))
+    overall_var = np.nanvar(ssha_array)
+    outlierindx = np.where(varts > threshold * overall_var)[0]
+
+    good_strips_list_np = np.array(good_strips_list)
+    if len(outlierindx) > 0:
+        to_remove = []
+        for outlier in outlierindx:
+            matching = np.where(good_strips_list_np[:, 0] == outlier)[0]
+            to_remove.extend(matching)
+        good_strips_list_clean = np.delete(good_strips_list_np, to_remove, axis=0)
+    else:
+        good_strips_list_clean = good_strips_list_np
+
+    karin.good_strips_list = good_strips_list_clean
+    karin.removed_strips = [tuple(good_strips_list_np[i]) for i in to_remove] if len(outlierindx) > 0 else []
+    karin.num_useful_strips = len(karin.good_strips_list)
+    data.close()
 
     print(f"----------------------------------")
-    print(f"Total Number of GOOD KaRIn strips : {len(good_strips_list_clean)}")
-    print(f"Number of BAD KaRIn strips        : {len(bad_strips_list)}")
-    print(f"Number of HIGH VARIANCE strips    : {len(removed)}\n")
+    print(f"Total Number of Good KaRIn strips : {len(good_strips_list_clean)}")
+    print(f"Number of Quality Masked KaRIn strips        : {len(bad_strips_list)}")
+    print(f"Number of High Variance strips    : {len(karin.removed_strips)}\n")
 
     print("Good strips (cycle, side):")
     for c, s in good_strips_list_clean:
         print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
 
     print("\nHigh variance strips removed (cycle, side):")
-    for c, s in sorted(removed):
+    for c, s in sorted(karin.removed_strips):
         print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
 
-    print("\nOther bad strips (cycle, side):")
+    print("\nOther strips (cycle, side):")
     for c, s in bad_strips_list:
         print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
 
     # Optionally, return as dict for downstream use
     summary = {
         "good_strips": [tuple(map(int, x)) for x in good_strips_list_clean],
-        "removed_high_variance": [tuple(map(int, x)) for x in removed],
-        "other_bad_strips": [tuple(map(int, x)) for x in bad_strips_list],
+        "removed_high_variance": [tuple(map(int, x)) for x in karin.removed_strips],
+        "other_strips": [tuple(map(int, x)) for x in bad_strips_list],
     }
 
 def process_karin_data(karin, cutoff_m=100e3, delta=2e3):
@@ -265,7 +284,7 @@ def remove_outlier_strips(ssha_array, good_strips_list, threshold=10):
     is an outlier (> threshold * overall nanvar). From Xihans code
     """
 
-    varts = np.nanvar(ssha_array, axis=(0,1,2))
+    varts = np.nanvar(ssha_array, axis=(0, 1,2))
     overall_var = np.nanvar(ssha_array)
     outlierindx = np.where(varts > threshold * overall_var)[0]
 

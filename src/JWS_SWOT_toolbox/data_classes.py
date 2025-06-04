@@ -14,10 +14,20 @@ class KarinData:
         self.time = np.full((num_cycles, track_length), np.nan)
         self.tide = np.full_like(self.lat, np.nan)
     
-    def distances(self, samp_indx = 1):  # some index to sample the distances where data is nonzero
-        self.dx = 1e3 * swot.haversine_dx(self.lon[samp_indx, :, 0], self.lat[samp_indx, :, 0])
-        self.dy = 1e3 * swot.haversine_dx(self.lon[samp_indx, 0, :], self.lat[samp_indx, 0, :])
-        print(f"KaRIn spacing: dx = {self.dx:.2f} m, dy = {self.dy:.2f} m")
+    def distances(self, samp_indx=10):
+        for i in range(self.lon.shape[0]):
+            lon_row = self.lon[i, :, 0]
+            lat_row = self.lat[i, :, 0]
+            lon_col = self.lon[i, 0, :]
+            lat_col = self.lat[i, 0, :]
+            if np.any(np.isfinite(lon_row)) and np.any(np.isfinite(lat_row)) and \
+            np.any(np.isfinite(lon_col)) and np.any(np.isfinite(lat_col)):
+                samp_indx = i
+                self.dx = 1e3 * swot.haversine_dx(lon_row, lat_row)
+                self.dy = 1e3 * swot.haversine_dx(lon_col, lat_col)
+                print(f"Using index {samp_indx}. KaRIn spacing: dx = {self.dx:.2f} m, dy = {self.dy:.2f} m")
+                return
+        raise RuntimeError("No valid sampling index with finite values found.")
 
     def coordinates(self): # Returns the full grid coordinates
         self.y_coord    = self.dy * np.arange(self.track_length)
@@ -36,9 +46,16 @@ class NadirData:
         self.lat  = np.full_like(self.ssha, np.nan)
         self.lon  = np.full_like(self.ssha, np.nan)
         
-    def distances(self, samp_indx = 1):
-        self.dy   = 1e3 * swot.haversine_dx(self.lon[samp_indx, :], self.lat[samp_indx, :])
-        print(f"Nadir spacing: dy = {self.dy:.2f} m")
+    def distances(self, samp_indx=10):
+        for i in range(self.lon.shape[0]):
+            lon_line = self.lon[i, :]
+            lat_line = self.lat[i, :]
+            if np.any(np.isfinite(lon_line)) and np.any(np.isfinite(lat_line)):
+                samp_indx = i
+                self.dy = 1e3 * swot.haversine_dx(lon_line, lat_line)
+                print(f"Using index {samp_indx}. Nadir spacing: dy = {self.dy:.2f} m")
+                return
+        raise RuntimeError("No valid sampling index with any finite values found.")
     
     def coordinates(self):
         self.y_coord    = self.dy * np.arange(self.track_length)
