@@ -7,3 +7,4 @@ from .geometry_tools import *
 from .spectral_fits import * 
 from .guassian_processes import *
 from .data_classes import * 
+from .scattering_transform import *

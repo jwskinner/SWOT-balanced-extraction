@@ -32,14 +32,14 @@ def make_karin_points(karin):
     Xk, Yk = np.meshgrid(xk_1d, yk_1d)
     return Xk.flatten(), Yk.flatten()
 
-def make_nadir_points(karin, nadir):
+def make_nadir_points(karin, nadir, offset=0):
     nn = nadir.track_length
     ny = 2*karin.swath_width
     delta_k = karin.dx
     delta_n = nadir.dy
     gap = karin.middle_width
 
-    xn = (np.arange(0.5, nn, 1)) * delta_n
+    xn = (np.arange(0.5, nn, 1)) * delta_n + offset
     yn = (ny // 2 + gap / 2) * delta_k * np.ones(nn)
 
     return xn, yn
@@ -73,9 +73,12 @@ def generate_signal_and_noise(F, Fk, sigma, nxny, nn):
     eta = np.concatenate((eta_k, eta_n))
     return h, eta, eta_k, eta_n
 
-def make_target_grid(karin):
+def make_target_grid(karin, extend=False):
     nx = karin.track_length
-    ny = karin.total_width
+    if extend: 
+        ny = karin.total_width + 4 # makes a 64 pt grid useful for the ST analysis
+    else: 
+        ny = karin.total_width
     delta_kx = karin.dx
     delta_ky = karin.dy
     xt_1d = np.arange(0.5, nx, 1) * delta_kx
@@ -87,8 +90,6 @@ def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     print("Estimating signal on target points...")
     start_time = time.time()
     R = c(np.hypot(xt[:, None] - x, yt[:, None] - y))
-    print(f"shape h: {h.shape}")
-    print(f"shape R: {R.shape}") 
     ht = R @ la.solve(C + N, h)
     print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
     return ht

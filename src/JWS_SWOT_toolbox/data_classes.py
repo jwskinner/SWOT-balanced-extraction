@@ -2,7 +2,7 @@ import numpy as np
 import JWS_SWOT_toolbox as swot
 
 class KarinData:
-    def __init__(self, num_cycles, track_length):
+    def __init__(self, num_cycles, track_length, lat_min, lat_max):
         self.swath_width = 25
         self.middle_width = 10 
         self.num_cycles = num_cycles
@@ -13,6 +13,8 @@ class KarinData:
         self.ssh = np.full_like(self.lat, np.nan)
         self.time = np.full((num_cycles, track_length), np.nan)
         self.tide = np.full_like(self.lat, np.nan)
+        self.lat_min = lat_min
+        self.lat_max = lat_max
     
     def distances(self, samp_indx=10):
         for i in range(self.lon.shape[0]):
@@ -38,13 +40,15 @@ class KarinData:
 
 
 class NadirData:
-    def __init__(self, num_cycles, track_length_nadir):
+    def __init__(self, num_cycles, track_length_nadir, lat_min, lat_max):
         self.num_cycles = num_cycles
         self.track_length = track_length_nadir
         self.ssh = np.full((num_cycles, track_length_nadir), np.nan)
         self.ssha = np.full((num_cycles, track_length_nadir), np.nan)
         self.lat  = np.full_like(self.ssha, np.nan)
         self.lon  = np.full_like(self.ssha, np.nan)
+        self.lat_min = lat_min
+        self.lat_max = lat_max
         
     def distances(self, samp_indx=10):
         for i in range(self.lon.shape[0]):
@@ -61,8 +65,8 @@ class NadirData:
         self.y_coord    = self.dy * np.arange(self.track_length)
         self.t_coord    = np.arange(self.num_cycles)
 
-def init_swot_arrays(dims):
+def init_swot_arrays(dims, lat_min, lat_max):
     ncycles, track_length, track_length_nadir = dims
-    karin = KarinData(ncycles, track_length)
-    nadir = NadirData(ncycles, track_length_nadir)
+    karin = KarinData(ncycles, track_length, lat_min, lat_max)
+    nadir = NadirData(ncycles, track_length_nadir, lat_min, lat_max)
     return karin, nadir
