@@ -16,7 +16,7 @@ class KarinData:
         self.lat_min = lat_min
         self.lat_max = lat_max
     
-    def distances(self, samp_indx=10):
+    def distances(self, samp_indx=1):
         for i in range(self.lon.shape[0]):
             lon_row = self.lon[i, :, 0]
             lat_row = self.lat[i, :, 0]
@@ -31,12 +31,19 @@ class KarinData:
                 return
         raise RuntimeError("No valid sampling index with finite values found.")
 
-    def coordinates(self): # Returns the full grid coordinates
-        self.y_coord    = self.dy * np.arange(self.track_length)
-        self.x_coord    = self.dx * np.arange(self.total_width) # Total points in grid 
-        self.x_obs      = self.dx * np.arange(self.total_width - self.middle_width) # Observed points in grid (i.e., remove the gap)
-        self.t_coord    = np.arange(self.num_cycles)
-        self.x_grid, self.y_grid     = np.meshgrid(self.x_coord, self.y_coord)
+    def coordinates(self):
+        y_idx       = np.arange(0.5, self.track_length, 1.0) 
+        self.y_coord = self.dy * y_idx
+
+        x_idx       = np.arange(0.5, self.total_width, 1.0)
+        self.x_coord = self.dx * x_idx
+
+        left  = x_idx[:self.swath_width]
+        right = x_idx[self.swath_width + self.middle_width:]
+        self.x_obs = self.dx * np.concatenate((left, right))
+
+        self.t_coord = np.arange(self.num_cycles)
+        self.x_grid, self.y_grid = np.meshgrid(self.x_coord, self.y_coord)
 
 
 class NadirData:
@@ -50,23 +57,39 @@ class NadirData:
         self.lat_min = lat_min
         self.lat_max = lat_max
         
-    def distances(self, samp_indx=10):
+    def distances(self, samp_indx=1):
         for i in range(self.lon.shape[0]):
-            lon_line = self.lon[i, :]
-            lat_line = self.lat[i, :]
-            if np.any(np.isfinite(lon_line)) and np.any(np.isfinite(lat_line)):
-                samp_indx = i
-                self.dy = 1e3 * swot.haversine_dx(lon_line, lat_line)
-                print(f"Using index {samp_indx}. Nadir spacing: dy = {self.dy:.2f} m")
+            # skip lines with no data
+            if not np.any(np.isfinite(self.ssha[i, :])):
+                continue
+
+            # compute spacing (could be scalar or array)
+            dy_vals = 1e3 * swot.haversine_dx(self.lon[i, :], self.lat[i, :])
+            avg_dy = np.nanmean(np.atleast_1d(dy_vals))
+
+            # if mean is valid, set and exit
+            if not np.isnan(avg_dy):
+                self.dy = avg_dy
+                print(f"Using index {i}. Nadir spacing: dy = {self.dy:.2f} m")
                 return
-        raise RuntimeError("No valid sampling index with any finite values found.")
+        raise RuntimeError("No valid sampling index with any finite dy found.")
     
     def coordinates(self):
-        self.y_coord    = self.dy * np.arange(self.track_length)
-        self.t_coord    = np.arange(self.num_cycles)
+        y_idx       = np.arange(0.5, self.track_length, 1.0)     # length = track_length
+        self.y_coord = self.dy * y_idx + getattr(self, 'offset', 0.0)
+
+        x_idx       = np.arange(0.5, self.karin.total_width, 1.0)
+        centre_idx  = self.karin.swath_width + self.karin.middle_width / 2
+        centre_dist = self.karin.dx * x_idx[int(centre_idx)]
+        self.x_coord = np.full(self.track_length, centre_dist)
+
+        self.t_coord = np.arange(self.num_cycles)
+        self.x_grid, self.y_grid = np.meshgrid(self.x_coord, self.y_coord)
+
 
 def init_swot_arrays(dims, lat_min, lat_max):
     ncycles, track_length, track_length_nadir = dims
     karin = KarinData(ncycles, track_length, lat_min, lat_max)
     nadir = NadirData(ncycles, track_length_nadir, lat_min, lat_max)
+    nadir.karin = karin
     return karin, nadir

@@ -70,7 +70,7 @@ def plot_ssh_summary(ht, nyt, nxt, karin, nadir, index, shared_cycles, pass_numb
     )
     sc = axes[0].scatter(
         xn * 1e-3, yn * 1e-3,
-        c=nadir.ssh[index, :], s=6, cmap=cmocean.cm.balance,
+        c=nadir.ssh[index, :-1], s=6, cmap=cmocean.cm.balance,
         vmin=vmin, vmax=vmax, edgecolor="none"
     )
     axes[0].set_title("Observed SSH")

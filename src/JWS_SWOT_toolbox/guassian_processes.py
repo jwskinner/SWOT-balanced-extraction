@@ -4,6 +4,8 @@ from scipy.special import gamma
 from scipy.spatial.distance import cdist
 import numpy.linalg as la
 import time
+import numpy as np
+import JWS_SWOT_toolbox as swot
 
 def cov(s, n, L):
     k = np.arange(n // 2 + 1) / L
@@ -19,7 +21,6 @@ def cov(s, n, L):
     return scipy.interpolate.interp1d(r, C_r, kind='linear', bounds_error=False, fill_value="extrapolate")
 
 def make_karin_points(karin):
-    
     nx = karin.track_length
     ny = 2 * karin.swath_width
     gap = karin.middle_width
@@ -28,6 +29,7 @@ def make_karin_points(karin):
     xk_1d = np.arange(0.5, nx, 1) * delta_k
     yk_1d_upper = np.arange(0.5, ny // 2, 1) * delta_k
     yk_1d_lower = np.arange(ny // 2 + gap + 0.5, ny + gap, 1) * delta_k
+
     yk_1d = np.concatenate((yk_1d_upper, yk_1d_lower))
     Xk, Yk = np.meshgrid(xk_1d, yk_1d)
     return Xk.flatten(), Yk.flatten()
@@ -43,6 +45,152 @@ def make_nadir_points(karin, nadir, offset=0):
     yn = (ny // 2 + gap / 2) * delta_k * np.ones(nn)
 
     return xn, yn
+
+def make_karin_points_from_data(karin, index): # Converts karin lats, lons into m grid
+    lons = karin.lon[index, :, :]
+    lats = karin.lat[index, :, :]
+
+    nx, ny = np.shape(lons)
+
+    valid_mask = (~np.isnan(lons)) & (~np.isnan(lats))
+
+    lat0 = lats[0, 0]
+    lon0 = lons[0, 0]
+
+    # x: distance along latitude circle (east-west) - take dx component
+    x_m, _, _ = swot.projected_distance(lon0, lat0, lons, np.full_like(lats, lat0))
+    
+    # y: distance along longitude circle (north-south) - take dy component  
+    _, y_m, _ = swot.projected_distance(lon0, lat0, np.full_like(lons, lon0), lats)
+
+    # Shift to make all distances positive
+    x_shifted = x_m - np.nanmin(x_m)
+    y_shifted = y_m - np.nanmin(y_m)
+
+    x_valid = x_shifted[valid_mask]
+    y_valid = y_shifted[valid_mask]
+
+    # Using the karin grid structure we will return the target grid also 
+    x_target, y_target = make_target_grid_from_data(x_shifted, y_shifted, valid_mask)
+
+    return x_valid, y_valid, x_target, y_target
+
+def make_target_grid_from_data(x_shifted, y_shifted, valid_mask, extra_width=4):
+    """Create target grid that fills the nadir gap between swaths"""
+    
+    n_rows, n_cols = x_shifted.shape
+    
+    # Create the target grid by filling the nadir gap
+    x_target = x_shifted.copy()
+    y_target = y_shifted.copy()
+    
+    # For each row, interpolate across the nadir gap
+    for i in range(n_rows):
+        row_x = x_shifted[i, :]
+        row_y = y_shifted[i, :]
+        
+        # Find valid (non-NaN) indices
+        valid_indices = np.where(~np.isnan(row_x))[0]
+        
+        if len(valid_indices) > 0:
+            # Find gaps in the valid indices (nadir region)
+            if len(valid_indices) > 1:
+                # Check for gaps larger than 1 (indicating nadir)
+                gaps = np.diff(valid_indices)
+                large_gaps = np.where(gaps > 1)[0]
+                
+                for gap_idx in large_gaps:
+                    # Indices of the gap boundaries
+                    left_valid_idx = valid_indices[gap_idx]
+                    right_valid_idx = valid_indices[gap_idx + 1]
+                    
+                    # Fill the gap between left_valid_idx and right_valid_idx
+                    gap_start = left_valid_idx + 1
+                    gap_end = right_valid_idx
+                    gap_length = gap_end - gap_start
+                    
+                    if gap_length > 0:
+                        # Linear interpolation
+                        x_left = row_x[left_valid_idx]
+                        x_right = row_x[right_valid_idx]
+                        y_left = row_y[left_valid_idx]
+                        y_right = row_y[right_valid_idx]
+                        
+                        # Interpolate x and y values
+                        for j in range(gap_length):
+                            alpha = (j + 1) / (gap_length + 1)
+                            x_target[i, gap_start + j] = x_left + alpha * (x_right - x_left)
+                            y_target[i, gap_start + j] = y_left + alpha * (y_right - y_left)
+    
+    # Add extra width if requested
+    if extra_width > 0:
+        n_cols_new = n_cols + extra_width
+        x_target_extended = np.full((n_rows, n_cols_new), np.nan)
+        y_target_extended = np.full((n_rows, n_cols_new), np.nan)
+        
+        # Copy filled data
+        x_target_extended[:, :n_cols] = x_target
+        y_target_extended[:, :n_cols] = y_target
+        
+        # Extrapolate the extra columns
+        for i in range(n_rows):
+            row_x = x_target[i, :]
+            row_y = y_target[i, :]
+            valid_indices = np.where(~np.isnan(row_x))[0]
+            
+            if len(valid_indices) >= 2:
+                last_idx = valid_indices[-1]
+                second_last_idx = valid_indices[-2]
+                
+                dx = row_x[last_idx] - row_x[second_last_idx]
+                dy = row_y[last_idx] - row_y[second_last_idx]
+                
+                for j in range(extra_width):
+                    x_target_extended[i, n_cols + j] = row_x[last_idx] + (j + 1) * dx
+                    y_target_extended[i, n_cols + j] = row_y[last_idx] + (j + 1) * dy
+        
+        return x_target_extended, y_target_extended
+    
+    return x_target, y_target
+
+def make_nadir_points_from_data(karin, nadir, index):
+    lons = nadir.lon[index, :]  
+    lats = nadir.lat[index, :]
+
+    # we use our KaRIn point as our reference here
+    k_lons = karin.lon[index, :, :]
+    k_lats = karin.lat[index, :, :]
+    lat0 = k_lats[0, 0]
+    lon0 = k_lons[0, 0]
+    
+    if lons.ndim > 1:
+        lons = lons.squeeze()
+        lats = lats.squeeze()
+    
+    valid_mask = (~np.isnan(lons)) & (~np.isnan(lats))
+    
+    # x: distance along latitude circle (east-west) - take dx component
+    x_m, _, _ = swot.projected_distance(lon0, lat0, lons, np.full_like(lats, lat0))
+    
+    # y: distance along longitude circle (north-south) - take dy component  
+    _, y_m, _ = swot.projected_distance(lon0, lat0, np.full_like(lons, lon0), lats)
+    
+    # Apply the shifts from the karin data
+    karin_x_m, _, _ = swot.projected_distance(lon0, lat0, k_lons, np.full_like(k_lats, lat0))
+    _, karin_y_m, _ = swot.projected_distance(lon0, lat0, np.full_like(k_lons, lon0), k_lats)
+    
+    # Use KaRIn min values to ensure consistent coordinate system
+    x_min_karin = np.nanmin(karin_x_m)
+    y_min_karin = np.nanmin(karin_y_m)
+    
+    # Apply same shifts as KaRIn
+    x_shifted = x_m - x_min_karin
+    y_shifted = y_m - y_min_karin
+    
+    x_valid = x_shifted[valid_mask]
+    y_valid = y_shifted[valid_mask]
+    
+    return x_valid, y_valid
 
 def build_covariance_matrix(cov_func, x, y):
     print("Calculating covariance matrices...")
@@ -81,8 +229,8 @@ def make_target_grid(karin, extend=False):
         ny = karin.total_width
     delta_kx = karin.dx
     delta_ky = karin.dy
-    xt_1d = np.arange(0.5, nx, 1) * delta_kx
-    yt_1d = np.arange(0.5, ny, 1) * delta_ky
+    xt_1d = np.arange(0., nx, 1) * delta_kx
+    yt_1d = np.arange(0., ny, 1) * delta_ky
     Xt, Yt = np.meshgrid(xt_1d, yt_1d)
     return Xt.flatten(), Yt.flatten(), nx, ny
 

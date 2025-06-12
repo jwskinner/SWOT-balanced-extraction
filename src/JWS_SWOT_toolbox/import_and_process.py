@@ -11,6 +11,8 @@ from scipy.special import gamma, kv
 from scipy.ndimage import gaussian_filter
 import os
 import matplotlib.pyplot as plt
+import pandas as pd
+from IPython.display import display, Markdown
 
 #  ------- Functions for loading and processing SWOT data
 # Loads the SWOT files from the specified folder and aligns the KaRIn and Nadir files based on their cycles.
@@ -201,7 +203,7 @@ def load_karin_data_old(karin_files_with_numbers, indx, karin):
     for c, s in sorted(karin.removed_strips):
         print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
 
-    print("\nOther strips (cycle, side):")
+    print("\nBad strips (cycle, side):")
     for c, s in bad_strips_list:
         print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
 
@@ -212,11 +214,11 @@ def load_karin_data_old(karin_files_with_numbers, indx, karin):
         "other_strips": [tuple(map(int, x)) for x in bad_strips_list],
     }
 
-def load_karin_data(karin_files_with_numbers, indx, karin):
+def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin):
 
     swath_width = karin.swath_width
     initial_good_strips = []         
-    bad_strips_quality_issues = []   
+    bad_strips_quality = []   
 
     for n, (filename, cycle) in enumerate(karin_files_with_numbers):
         try:
@@ -224,6 +226,11 @@ def load_karin_data(karin_files_with_numbers, indx, karin):
                 for side in [0, 1]:  # 0 for left, 1 for right
                     i0 = 34 * side + 5
                     i1 = i0 + swath_width
+
+                    fp_latitude = data['latitude']
+                    mid_col = fp_latitude.shape[1] // 2
+                    lat_center = fp_latitude[:, mid_col]
+                    indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
 
                     ssha = data['ssha_karin_2'][indx, i0:i1]
                     qual = data['ssha_karin_2_qual'][indx, i0:i1]
@@ -236,8 +243,8 @@ def load_karin_data(karin_files_with_numbers, indx, karin):
 
                     # Initial quality check for the entire side.
                     if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual != 0):
-                        bad_strips_quality_issues.append((cycle, side))
-                        continue
+                        bad_strips_quality.append((cycle, side))
+                        #continue # Skip the strip
 
                     # Mask bad data points (where qual is non-zero)
                     ssha_combined = ssha + xcor - tide
@@ -259,11 +266,12 @@ def load_karin_data(karin_files_with_numbers, indx, karin):
                         karin.tide[n, :, j_slice] = tide_masked
 
                     initial_good_strips.append((cycle, side))
+
+        
         except FileNotFoundError:
             print(f"Error: File not found {filename}")
         except Exception as e:
             print(f"Error processing file {filename}, cycle {cycle}, side {side}: {e}")
-
 
     # --- Variance-based outlier removal from Xihan ---
     karin.good_strips_list = np.empty((0, 2)) # Initialize as empty numpy array
@@ -320,41 +328,51 @@ def load_karin_data(karin_files_with_numbers, indx, karin):
             if 0 <= n_idx < karin.ssh.shape[0]: # Boundary check
                 karin.ssh[n_idx, :, :] = np.nan
     
-    karin.bad_strips_quality_issues = sorted(list(set(bad_strips_quality_issues)))
-    karin.num_useful_strips = len(karin.good_strips_list)
+    karin.bad_strips_quality = sorted(list(set(bad_strips_quality)))
 
     # --- Summary ---
     print(f"----------------------------------")
-    print(f"Total Number of Good KaRIn strips : {karin.num_useful_strips}")
-    print(f"Number of Quality Masked KaRIn strips : {len(karin.bad_strips_quality_issues)}")
+    print(f"Total Number of Good KaRIn strips : {len(karin.good_strips_list)}")
+    print(f"Number of Quality Masked KaRIn strips : {len(karin.bad_strips_quality)}")
     print(f"Number of High Variance strips removed : {len(karin.removed_strips_high_variance)}\n")
 
     print("Good strips (cycle, side):")
+    good_cycles = []
     if karin.good_strips_list.size > 0:
         for c, s in karin.good_strips_list: # It's already a numpy array
             print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+            good_cycles.append(c)
     else:
-        print("  No good strips.")
+        print("No good strips.")
 
     print("\nHigh variance strips removed (cycle, side):")
+    hvar_cycles = []
     if karin.removed_strips_high_variance: # This is a list of tuples
         for c, s in karin.removed_strips_high_variance: # Already sorted
             print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+            hvar_cycles.append(c)
     else:
         print("  No high variance strips removed.")
 
     print("\nStrips failing initial quality checks (cycle, side):")
-    if karin.bad_strips_quality_issues: # This is a list of tuples
-        for c, s in karin.bad_strips_quality_issues: # Already sorted
+    
+    bad_cycles = []
+    if karin.bad_strips_quality: # This is a list of tuples
+        for c, s in karin.bad_strips_quality: # Already sorted
             print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+            bad_cycles.append(c)
     else:
         print("  No strips failed initial quality checks.")
 
     summary = {
         "good_strips": [tuple(map(int, x)) for x in karin.good_strips_list.tolist()] if karin.good_strips_list.size > 0 else [],
         "removed_high_variance": karin.removed_strips_high_variance, # Already list of int tuples
-        "other_strips_quality_issues": karin.bad_strips_quality_issues, # Already list of int tuples
+        "other_strips_quality_issues": karin.bad_strips_quality, # Already list of int tuples
     }
+
+    karin.good_cycles = sorted(set(good_cycles))
+    karin.bad_cycles = sorted(set(bad_cycles))
+    karin.hvar_cycles = sorted(set(hvar_cycles))
 
     return summary
 
@@ -384,16 +402,17 @@ def process_karin_data(karin, cutoff_m=100e3, delta=2e3):
     karin.ssha = ssha
     return 
 
-def load_nadir_data(nadir_files_with_numbers, indxs, nadir):
+def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
+    
     num_good_cycles = 0
     num_bad_cycles = 0
     
     for n, (filename, cycle) in enumerate(nadir_files_with_numbers):
         data = nc.Dataset(filename, 'r')
         group = data['data_01']
-        
         lats = group['latitude'][:]
         lons = data['data_01']['longitude'][:]
+        indxs = np.where((lats >= lat_min) & (lats <= lat_max))[0]
         
         if len(indxs) == 0 or len(group['ku']['ssha']) <= indxs[-1]:
             num_bad_cycles += 1
@@ -457,6 +476,5 @@ def remove_outlier_strips(ssha_array, good_strips_list, threshold=10):
     num_useful_strips = good_strips_list_clean.shape[0]
 
     return good_strips_list_clean, num_useful_strips
-
 
 
