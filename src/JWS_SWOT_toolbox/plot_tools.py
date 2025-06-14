@@ -50,85 +50,103 @@ def set_plot_style(font='Fira Sans'):
     plt.rcParams['savefig.bbox'] = 'tight'
     plt.rcParams['savefig.dpi'] = 200
 
-def plot_ssh_summary(ht, nyt, nxt, karin, nadir, index, shared_cycles, pass_number, xn, yn, swot, save_dir, basename):
+def plot_ssh_summary(ht, nyt, nxt,
+                     ykk, xkk, mask_k,
+                     ynn, xnn, mask_n,
+                     karin, nadir,
+                     index,
+                     shared_cycles,
+                     pass_number,
+                     swot,
+                     plots_dir,
+                     basename):
 
-    plots_dir = os.path.join(save_dir, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
-
-    # Reshape and limits
+    # ── reshape the map and pick colour limits 
     ht_map = ht.reshape(nyt, nxt)
-    vmin, vmax = np.nanpercentile(ht_map, [2, 98])
+    #vmin, vmax = np.nanpercentile(ht_map, [2, 98])
+    
+    vmin = -0.4 
+    vmax = 0.4 
 
+    # ── figure
     fig, axes = plt.subplots(4, 1, figsize=(10, 13), sharex=True,
-                             gridspec_kw={"hspace": 0.4})
+                            gridspec_kw={"hspace": 0.4})
 
-    # 1. Observed SSH
     sc = axes[0].scatter(
-        karin.y_grid * 1e-3, karin.x_grid * 1e-3,
-        c=karin.ssha[index, :, :], s=6, cmap=cmocean.cm.balance,
+        ykk * 1e-3, xkk * 1e-3, c = karin.ssha[index, :, :][mask_k].flatten(), s=5, cmap=cmocean.cm.balance,
         vmin=vmin, vmax=vmax, edgecolor="none"
     )
     sc = axes[0].scatter(
-        xn * 1e-3, yn * 1e-3,
-        c=nadir.ssh[index, :-1], s=6, cmap=cmocean.cm.balance,
+        ynn * 1e-3, xnn * 1e-3, c = nadir.ssh[index, :][mask_n], s=5, cmap=cmocean.cm.balance,
         vmin=vmin, vmax=vmax, edgecolor="none"
     )
     axes[0].set_title("Observed SSH")
     axes[0].set_title("Cycle: {}".format(shared_cycles[index]), fontsize=11, loc='right')
     axes[0].set_title("Pass: {:03d}".format(pass_number), fontsize=11, loc='left')
+    #axes[0].set_xlabel("along-track (km)")
     axes[0].set_ylabel("across-track (km)")
     axes[0].set_aspect("auto")
     fig.colorbar(sc, ax=axes[0], orientation='vertical', shrink=0.7, pad=0.02)
 
-    # 2. Geostrophic vorticity prep
-    lats = np.linspace(np.nanmin(karin.lat[index, :, :]), np.nanmax(karin.lat[index, :, :]), 64)
+    lats = np.linspace(np.nanmin(karin.lat[index, :, :]), np.nanmax(karin.lat[index, :, :]), nyt)
     geo_vort = swot.compute_geostrophic_vorticity_fd(np.ma.masked_invalid(ht_map), 2000, 2000, lats)
 
-    # 2. Generated SSH (gridded)
+    # 1. gridded estimate (imshow)
     im0 = axes[1].imshow(
         ht_map,
         origin="lower",
-        extent=(0, nxt * karin.dx * 1e-3,
-                0, nyt * karin.dy * 1e-3),
+        extent=(0, nxt * karin.dx * 1e-3,        # km
+                0, nyt * karin.dy * 1e-3),       # km
         aspect="auto",
         cmap=cmocean.cm.balance,
         vmin=vmin, vmax=vmax
     )
-    axes[1].set_title("Generated SSH")
+    axes[1].set_title("Balanced SSH")
     axes[1].set_ylabel("across-track (km)")
     fig.colorbar(im0, ax=axes[1], orientation='vertical', shrink=0.7, pad=0.02)
 
-    # 3. SSH gradient
     im1 = axes[2].imshow(
         swot.compute_gradient(ht_map),
         origin="lower",
-        extent=(0, nxt * karin.dx * 1e-3,
-                0, nyt * karin.dy * 1e-3),
+        extent=(0, nxt * karin.dx * 1e-3,        # km
+                0, nyt * karin.dy * 1e-3),       # km
         aspect="auto",
         cmap=cmocean.cm.deep_r
     )
+
     axes[2].set_title("Gradient")
     axes[2].set_ylabel("across-track (km)")
     fig.colorbar(im1, ax=axes[2], orientation='vertical', shrink=0.7, pad=0.02, label=r'$\nabla(SSH)$')
 
-    # 4. Geostrophic vorticity
-    im2 = axes[3].imshow(
+    im1 = axes[3].imshow(
         geo_vort,
         origin="lower",
-        extent=(0, nxt * karin.dx * 1e-3,
-                0, nyt * karin.dy * 1e-3),
+        extent=(0, nxt * karin.dx * 1e-3,        # km
+                0, nyt * karin.dy * 1e-3),       # km
         aspect="auto",
-        vmin=-1,
-        vmax=1,
+        vmin = -1, 
+        vmax = 1,
         cmap=cmocean.cm.balance
     )
+    
     axes[3].set_title("Geostrophic Vorticity")
     axes[3].set_xlabel("along-track distance (km)")
     axes[3].set_ylabel("across-track (km)")
-    fig.colorbar(im2, ax=axes[3], orientation='vertical', shrink=0.7, pad=0.02, label=r'$\zeta / f$')
+    fig.colorbar(im1, ax=axes[3], orientation='vertical', shrink=0.7, pad=0.02, label=r'$\zeta / f$')
 
+    # shared colour-bar
     plt.tight_layout()
+    plt.show()
+
+
+    # Layout adjustment
+    plt.tight_layout()
+
+    # Ensure output directory exists
+    os.makedirs(plots_dir, exist_ok=True)
     plot_filename = os.path.join(plots_dir, f"{basename}.png")
-    plt.savefig(plot_filename, dpi=120)
+
+    # Save and close
+    fig.savefig(plot_filename, dpi=120, bbox_inches='tight')
     plt.close(fig)
     print(f"Saved plot to {plot_filename}")
