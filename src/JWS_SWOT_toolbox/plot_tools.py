@@ -65,8 +65,8 @@ def plot_ssh_summary(ht, nyt, nxt,
     ht_map = ht.reshape(nyt, nxt)
     #vmin, vmax = np.nanpercentile(ht_map, [2, 98])
     
-    vmin = -0.4 
-    vmax = 0.4 
+    vmin = -0.25 
+    vmax = 0.25 
 
     # ── figure
     fig, axes = plt.subplots(4, 1, figsize=(10, 13), sharex=True,
@@ -124,8 +124,8 @@ def plot_ssh_summary(ht, nyt, nxt,
         extent=(0, nxt * karin.dx * 1e-3,        # km
                 0, nyt * karin.dy * 1e-3),       # km
         aspect="auto",
-        vmin = -1, 
-        vmax = 1,
+        vmin = -0.5, 
+        vmax = 0.5,
         cmap=cmocean.cm.balance
     )
     
