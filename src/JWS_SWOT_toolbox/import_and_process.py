@@ -218,19 +218,24 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin):
 
     swath_width = karin.swath_width
     initial_good_strips = []         
-    bad_strips_quality = []   
+    bad_strips_quality = []  
+    time = np.full((karin.num_cycles, karin.track_length), np.nan)
 
     for n, (filename, cycle) in enumerate(karin_files_with_numbers):
         try:
             with nc.Dataset(filename, 'r') as data:
+
+                fp_latitude = data['latitude']
+                mid_col = fp_latitude.shape[1] // 2
+                lat_center = fp_latitude[:, mid_col]
+                indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
+
+                tvar = data['time'][indx] # Time is taken down the middle of the track length
+                time[n, :] = tvar
+
                 for side in [0, 1]:  # 0 for left, 1 for right
                     i0 = 34 * side + 5
                     i1 = i0 + swath_width
-
-                    fp_latitude = data['latitude']
-                    mid_col = fp_latitude.shape[1] // 2
-                    lat_center = fp_latitude[:, mid_col]
-                    indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
 
                     ssha = data['ssha_karin_2'][indx, i0:i1]
                     qual = data['ssha_karin_2_qual'][indx, i0:i1]
@@ -239,7 +244,6 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin):
                     tide = data['internal_tide_hret'][indx, i0:i1]
                     lat = data['latitude'][indx, i0:i1]
                     lon = data['longitude'][indx, i0:i1]
-                    # tvar = data['time'][indx] # Not used in the provided snippet logic
 
                     # Initial quality check for the entire side.
                     if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual != 0):
@@ -373,6 +377,7 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin):
     karin.good_cycles = sorted(set(good_cycles))
     karin.bad_cycles = sorted(set(bad_cycles))
     karin.hvar_cycles = sorted(set(hvar_cycles))
+    karin.time = time
 
     return summary
 
@@ -408,7 +413,7 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
     num_bad_cycles = 0
     
     for n, (filename, cycle) in enumerate(nadir_files_with_numbers):
-        data = nc.Dataset(filename, 'r')
+        data = nc.Dataset(filename, 'r') 
         group = data['data_01']
         lats = group['latitude'][:]
         lons = data['data_01']['longitude'][:]
@@ -429,6 +434,8 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
         
         num_good_cycles += 1
         n_valid = min(nadir.track_length, len(indxs))
+        if n_valid == 0:
+            print(f"Warning: No valid indices found for cycle {cycle} in file {filename}.")
         nadir.lat[n, :n_valid] = lats[indxs[:n_valid]]
         nadir.lon[n, :n_valid] = lons[indxs[:n_valid]]
         nadir.ssh[n, :n_valid] = ssha[:n_valid].filled(np.nan)

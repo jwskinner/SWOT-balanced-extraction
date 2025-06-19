@@ -11,7 +11,6 @@ class KarinData:
         self.lat  = np.full((num_cycles, track_length, self.total_width), np.nan)
         self.lon  = np.full_like(self.lat, np.nan)
         self.ssh = np.full_like(self.lat, np.nan)
-        self.time = np.full((num_cycles, track_length), np.nan)
         self.tide = np.full_like(self.lat, np.nan)
         self.lat_min = lat_min
         self.lat_max = lat_max
@@ -62,7 +61,7 @@ class NadirData:
     def distances(self, samp_indx=1):
         for i in range(self.lon.shape[0]):
             # skip lines with no data
-            if not np.any(np.isfinite(self.ssha[i, :])):
+            if not np.any(np.isfinite(self.ssh[i, :])):
                 continue
 
             # compute spacing (could be scalar or array)
