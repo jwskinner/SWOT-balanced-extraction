@@ -100,6 +100,8 @@ def get_karin_track_indices(karin_file, lat_min, lat_max):
     lat_center = fp_latitude[:, mid_col]
     indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
     track_length = len(indx)
+    if track_length ==0: 
+        print("KaRIn track length = 0, choose different sampling index")
     karin_ref.close()
     return indx, track_length
 
@@ -110,6 +112,8 @@ def get_nadir_track_indices(nadir_file, lat_min, lat_max, nadir_dy=None):
     lats_fp = nadir_ref['data_01']['latitude'][:] 
     indxs = np.where((lats_fp >= lat_min) & (lats_fp <= lat_max))[0]
     track_length_nadir = len(indxs) 
+    if track_length_nadir ==0: 
+        print("Nadir track length = 0, choose different sampling index")
     nadir_ref.close()
     
     return indxs, track_length_nadir
