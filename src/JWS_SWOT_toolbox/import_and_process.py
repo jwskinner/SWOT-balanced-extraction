@@ -218,7 +218,7 @@ def load_karin_data_old(karin_files_with_numbers, indx, karin):
         "other_strips": [tuple(map(int, x)) for x in bad_strips_list],
     }
 
-def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin):
+def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=True):
 
     swath_width = karin.swath_width
     initial_good_strips = []         
@@ -344,33 +344,42 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin):
     print(f"Number of Quality Masked KaRIn strips : {len(karin.bad_strips_quality)}")
     print(f"Number of High Variance strips removed : {len(karin.removed_strips_high_variance)}\n")
 
-    print("Good strips (cycle, side):")
+    if verbose:
+        print("Good strips (cycle, side):")
     good_cycles = []
     if karin.good_strips_list.size > 0:
         for c, s in karin.good_strips_list: # It's already a numpy array
-            print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+            if verbose:
+                print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
             good_cycles.append(c)
     else:
-        print("No good strips.")
+        if verbose:
+            print("No good strips.")
 
-    print("\nHigh variance strips removed (cycle, side):")
+    if verbose:
+        print("\nHigh variance strips removed (cycle, side):")
     hvar_cycles = []
     if karin.removed_strips_high_variance: # This is a list of tuples
         for c, s in karin.removed_strips_high_variance: # Already sorted
-            print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+            if verbose:
+                print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
             hvar_cycles.append(c)
     else:
-        print("  No high variance strips removed.")
+        if verbose:
+            print("  No high variance strips removed.")
 
-    print("\nStrips failing initial quality checks (cycle, side):")
+    if verbose:
+        print("\nStrips failing initial quality checks (cycle, side):")
     
     bad_cycles = []
     if karin.bad_strips_quality: # This is a list of tuples
         for c, s in karin.bad_strips_quality: # Already sorted
-            print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+            if verbose:
+                print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
             bad_cycles.append(c)
     else:
-        print("  No strips failed initial quality checks.")
+        if verbose:
+            print("  No strips failed initial quality checks.")
 
     summary = {
         "good_strips": [tuple(map(int, x)) for x in karin.good_strips_list.tolist()] if karin.good_strips_list.size > 0 else [],

@@ -33,18 +33,32 @@ def haversine_dx(lon, lat):
     total_distance = R * c
     return total_distance / (len(lon) - 1)
 
-def haversine(lon1, lat1, lon2, lat2):
-    """
-    Vectorized haversine distance, returns distance in km
-    """
-    R = 6371.0  # Earth radius in km
+def haversine_distance(lon1, lat1, lon2, lat2):
     lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
     dlon = lon2 - lon1
     dlat = lat2 - lat1
+    a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+    r = 6371 # Radius of earth in kilometers.
+    return c * r
 
-    a = np.sin(dlat / 2.0) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2.0) ** 2
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-    return R * c
+def convert_to_xy_grid(data_object, origin_object=None):
+    lat = data_object.lat
+    lon = data_object.lon
+    
+    # Determine the origin for the coordinate system
+    if origin_object is not None: # use the karin data object to center the nadir
+        # Use the second data object for the origin
+        lat_origin = np.nanmin(origin_object.lat) 
+        lon_origin = np.nanmin(origin_object.lon) 
+    else:
+        # Default behavior: calculate origin from the primary data object
+        lat_origin = np.nanmin(lat)
+        lon_origin = np.nanmin(lon)
+
+    y_km = haversine_distance(lon_origin, lat_origin, lon_origin, lat)
+    x_km = haversine_distance(lon_origin, lat, lon, lat)
+    return x_km, y_km
 
 def projected_distance(lon1, lat1, lon2, lat2, utm_zone=None):
     """

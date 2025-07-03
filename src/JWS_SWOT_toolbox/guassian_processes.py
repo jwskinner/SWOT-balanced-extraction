@@ -221,18 +221,36 @@ def generate_signal_and_noise(F, Fk, sigma, nxny, nn):
     eta = np.concatenate((eta_k, eta_n))
     return h, eta, eta_k, eta_n
 
+# def make_target_grid(karin, extend=False):
+#     nx = karin.track_length
+#     if extend: 
+#         ny = karin.total_width + 4 # makes a 64 pt grid useful for the ST analysis
+#     else: 
+#         ny = karin.total_width
+#     delta_kx = karin.dx
+#     delta_ky = karin.dy
+#     xt_1d = np.arange(0.5, nx, 1) * delta_kx
+#     yt_1d = np.arange(0.5, ny, 1) * delta_ky
+#     Xt, Yt = np.meshgrid(xt_1d, yt_1d)
+#     return Xt.flatten(), Yt.flatten(), nx, ny
+
 def make_target_grid(karin, extend=False):
-    nx = karin.track_length
-    if extend: 
-        ny = karin.total_width + 4 # makes a 64 pt grid useful for the ST analysis
+    
+    ny = karin.track_length
+    y_idx = np.arange(ny) + 0.5 
+    y_coord = karin.dy * y_idx
+    
+    if extend:
+        nx = karin.total_width + 4 
     else: 
-        ny = karin.total_width
-    delta_kx = karin.dx
-    delta_ky = karin.dy
-    xt_1d = np.arange(0., nx, 1) * delta_kx
-    yt_1d = np.arange(0., ny, 1) * delta_ky
-    Xt, Yt = np.meshgrid(xt_1d, yt_1d)
-    return Xt.flatten(), Yt.flatten(), nx, ny
+        nx = karin.total_width 
+   
+    x_idx = np.arange(nx) + 0.5 
+    x_coord = karin.dx * x_idx
+
+    X, Y = np.meshgrid(x_coord, y_coord) 
+    
+    return X.flatten(order="C"), Y.flatten(order="C"), nx, ny
 
 def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     print("Estimating signal on target points...")
@@ -241,3 +259,26 @@ def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     ht = R @ la.solve(C + N, h)
     print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
     return ht
+
+def estimate_signal_on_target_fast(R, C, N, h):
+    # same as above but we already have the R matrix, good for loops
+    print("Estimating signal on target points...")
+    start_time = time.time()
+    ht = R @ la.solve(C + N, h)
+    print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
+    return ht
+
+# SWOT covariance functions 
+def balanced_covariance(A_b, lam_b, s_param, L=5000000, max_k=10000e3):
+    S = lambda k: A_b / (1 + (lam_b * k)**s_param)
+    c = swot.cov(S, L, max_k)
+    return S, c
+
+def unbalanced_covariance(A_n, s_n, lam_n=1e5, cutoff=1e3, L=5000, max_k=10000e3):
+    sigma = 2 * np.pi * cutoff / np.sqrt(2 * np.log(2))
+    Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * np.exp(-0.5 * (sigma**2) * k**2)
+    nk = swot.cov(Sk, L, max_k)
+    return Sk, nk
+
+def nadir_noise_std(N_n, delta_n):
+    return np.sqrt(N_n / (2 * delta_n))
