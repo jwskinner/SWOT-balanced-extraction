@@ -117,7 +117,7 @@ job_slurm_batch
 *.out 
 
 # ignore my notebooks for now 
-*.ipynb
+#*.ipynb
 
 # ignore any figures that get made 
 *.pdf 
