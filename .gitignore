@@ -109,6 +109,10 @@ logs/
 NA-Sim_balanced_outputs/
 balanced_outputs
 
+# ignore my job files 
+job_slurm
+job_slurm_batch 
+
 # ignore the slurm files 
 *.out 
 
