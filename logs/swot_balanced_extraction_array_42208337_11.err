@@ -1,0 +1,59 @@
+/home/jskinner1/SWOT_tools/src/JWS_SWOT_toolbox/import_and_process.py:209: RuntimeWarning: Degrees of freedom <= 0 for slice.
+  varts = np.nanvar(ssha_array, axis=(1, 2))
+joblib.externals.loky.process_executor._RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/externals/loky/process_executor.py", line 463, in _process_worker
+    r = call_item()
+        ^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/externals/loky/process_executor.py", line 291, in __call__
+    return self.fn(*self.args, **self.kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 598, in __call__
+    return [func(*args, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/SWOT_tools/Interpolate_the_gap.py", line 390, in process_frame
+    plot_spectrum_comparison(
+  File "/home/jskinner1/SWOT_tools/Interpolate_the_gap.py", line 294, in plot_spectrum_comparison
+    spec_ht_map_2s = swot_obj.mean_power_spectrum(ht_map_xr, karin_obj.window, 'line', ['pixel'])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/SWOT_tools/src/JWS_SWOT_toolbox/spectrum_tools.py", line 13, in mean_power_spectrum
+    pspec = xrft.power_spectrum(data * window, dim=dim)
+                                ~~~~~^~~~~~~~
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/xarray/core/_typed_ops.py", line 251, in __mul__
+    return self._binary_op(other, operator.mul)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/xarray/core/dataarray.py", line 4682, in _binary_op
+    self, other = align(self, other, join=align_type, copy=False)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/xarray/core/alignment.py", line 888, in align
+    aligner.align()
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/xarray/core/alignment.py", line 575, in align
+    self.assert_unindexed_dim_sizes_equal()
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/xarray/core/alignment.py", line 476, in assert_unindexed_dim_sizes_equal
+    raise ValueError(
+ValueError: cannot reindex or align along dimension 'line' because of conflicting dimension sizes: {282, 283} (note: an index is found along that dimension with size=283)
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/jskinner1/SWOT_tools/Interpolate_the_gap.py", line 408, in <module>
+    results = Parallel(n_jobs=N_JOBS, backend=BACKEND)(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 2007, in __call__
+    return output if self.return_generator else list(output)
+                                                ^^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 1650, in _get_outputs
+    yield from self._retrieve()
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 1754, in _retrieve
+    self._raise_error_fast()
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 1789, in _raise_error_fast
+    error_job.get_result(self.timeout)
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 745, in get_result
+    return self._return_or_raise()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jskinner1/miniconda3/envs/d3/lib/python3.12/site-packages/joblib/parallel.py", line 763, in _return_or_raise
+    raise self._result
+ValueError: cannot reindex or align along dimension 'line' because of conflicting dimension sizes: {282, 283} (note: an index is found along that dimension with size=283)
+srun: error: exp-10-52: task 0: Exited with exit code 1

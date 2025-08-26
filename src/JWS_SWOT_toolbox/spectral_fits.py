@@ -35,7 +35,7 @@ def unbalanced_model(k, A_n, lam_n, s_n, cutoff=1e3):
 def karin_model(k, A_b, lam_b, s_param, A_n, lam_n, s_n):
     return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model(k, A_n, lam_n, s_n))
 
-def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None):
+def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose = True):
     '''Fits the balanced/unbalanced models to the averaged power spectrum'''
 
     track_length = data.track_length 
@@ -46,9 +46,10 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None):
     # Defaults for initial guess and bounds
     if initial_guess is None:
         initial_guess = [2.5e3, 200e3, 4.6, 10.0, 100e3, 1.3]
+    
     if bounds is None:
-        lower_bounds = [0, 0, 3, 0, 0, 0]
-        upper_bounds = [1e9, 1e9, 10, 1e9, 1e9, 10]
+        lower_bounds = [0, 0, 0, 0, 1.0e5, 0]
+        upper_bounds = [1e9, 1e9, 10, 1e9, 1.0001e5, 10]
         bounds = (lower_bounds, upper_bounds)
 
     # Fit the model (excluding zero)
@@ -60,7 +61,17 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None):
         sigma=weights,
         bounds=bounds,
     )
+    perr = np.sqrt(np.diag(pcov)) 
+    if verbose: 
+        print("")
+        print("---- KaRIn spectrum parameters ----")
+        params = ['Amp. balanced', 'lambda balanced', 'slope balanced', 'Amp. noise', 'lambda noise', 'slope noise']
+        max_len = max(len(p) for p in params)
+        for name, param, err in zip(params, popt, perr):
+            print(f"{name:<{max_len}} : {param:12.4e} ± {err:.2e}")
+    
     return popt, pcov
+
 
 def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds=None):
     ''' Fit only the noise parameter N in the nadir model, with balanced parameters fixed from KaRIn fit. '''
@@ -93,4 +104,10 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
         sigma=weights,
         bounds=bounds,
     )
+
+    perr = np.sqrt(np.diag(pcov))
+    print("") 
+    print("---- Nadir spectrum parameters ----")
+    print(f"Fitted Nadir noise floor N = {popt[0]} ± {perr[0]:.2e}")
+
     return popt, pcov

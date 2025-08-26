@@ -101,9 +101,21 @@ Thumbs.db
 # Ignore the SWOT_data folder
 SWOT_data/
 
+# Ignore outputs 
+outputs/
+NA_sim_outputs/
+balanced_outputs/
+
 # ignore the slurm files 
 *.out 
 
 # ignore my notebooks for now 
 *.ipynb
+
+# ignore any figures that get made 
+*.pdf 
+*.png
+
+# Ignore pickle files
+*.pkl
 

@@ -1,0 +1,8 @@
+WARNING: overwriting environment variables set in the machine
+overwriting variable ['NUMEXPR_MAX_THREADS']
+Traceback (most recent call last):
+  File "/home/jskinner1/SWOT_tools/Interpolate_the_gap.py", line 89, in <module>
+    indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], lat_min, lat_max)
+                                                      ~~~~~~~~~~~^^^^^^^^^^^^^^
+IndexError: list index out of range
+srun: error: exp-8-31: task 0: Exited with exit code 1

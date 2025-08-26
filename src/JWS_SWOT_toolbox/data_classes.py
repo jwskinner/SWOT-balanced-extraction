@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import JWS_SWOT_toolbox as swot
+import xarray as xr
+import xrft
 
 class KarinData:
     def __init__(self, num_cycles, track_length, lat_min, lat_max, pass_number):
@@ -16,52 +18,19 @@ class KarinData:
         self.lat_min = lat_min
         self.lat_max = lat_max
         self.pass_number = pass_number
-    
-    # def distances(self, samp_indx=1):
-    #     # 3D case
-    #     if self.lon.ndim == 3:
-    #         for i in range(self.lon.shape[0]):
-    #             lon_row = self.lon[i, :, 0]
-    #             lat_row = self.lat[i, :, 0]
-    #             lon_col = self.lon[i, 0, :]
-    #             lat_col = self.lat[i, 0, :]
-    #             if np.any(np.isfinite(lon_row)) and np.any(np.isfinite(lat_row)) and \
-    #             np.any(np.isfinite(lon_col)) and np.any(np.isfinite(lat_col)):
-    #                 samp_indx = i
-    #                 self.dx = 1e3 * swot.haversine_dx(lon_row, lat_row)
-    #                 self.dy = 1e3 * swot.haversine_dx(lon_col, lat_col)
-    #                 print(f"Using index {samp_indx}. KaRIn spacing: dx = {self.dx:.2f} m, dy = {self.dy:.2f} m")
-    #                 return
 
-    #     elif self.lon.ndim == 2:
-    #         # Find a finite row
-    #         for i in range(self.lon.shape[0]):
-    #             lon_row = self.lon[i, :]
-    #             lat_row = self.lat[i, :]
-    #             mask_row = np.isfinite(lon_row) & np.isfinite(lat_row)
-    #             if np.count_nonzero(mask_row) >= 2:
-    #                 lon_row = lon_row[mask_row]
-    #                 lat_row = lat_row[mask_row]
-    #                 break
-    #         else:
-    #             raise RuntimeError("No valid finite row found in 2D array.")
-
-    #         # Find a finite column
-    #         for j in range(self.lon.shape[1]):
-    #             lon_col = self.lon[:, j]
-    #             lat_col = self.lat[:, j]
-    #             mask_col = np.isfinite(lon_col) & np.isfinite(lat_col)
-    #             if np.count_nonzero(mask_col) >= 2:
-    #                 lon_col = lon_col[mask_col]
-    #                 lat_col = lat_col[mask_col]
-    #                 break
-    #         else:
-    #             raise RuntimeError("No valid finite column found in 2D array.")
-
-    #         self.dy = 1e3 * swot.haversine_dx(lon_row, lat_row)
-    #         self.dx = 1e3 * swot.haversine_dx(lon_col, lat_col)
-    #         print(f"KaRIn spacing: dx = {self.dx:.2f} m, dy = {self.dy:.2f} m")
-    #         return
+        # --- Spectra attributes ---
+        self.spec_ssh = None
+        self.spec_tmean = None
+        self.spec_filt_tmean = None
+        self.spec_ssha = None
+        self.spec_alongtrack_av = None
+        self.spec_alongtrack_ins = None
+        self.spec_tide = None
+        self.wavenumbers = None
+        self.time = None                 # seconds (num_cycles, track_length)
+        self.time_dt = None              # np.datetime64[ns] (num_cycles, track_length)
+        self.cycle_dates = None          # np.datetime64[ns] (num_cycles,)
 
     def coordinates(self):
         # Convert the lats and lons to a grid in km
@@ -117,6 +86,48 @@ class KarinData:
         self.y_obs = self.y_coord
         self.x_obs_grid, self.y_obs_grid = np.meshgrid(self.x_obs, self.y_obs)
 
+    def compute_spectra(self):
+        """Computes all power spectra for the Karin data."""
+        print("Computing KaRIn spectra...")
+        
+        # 1. window and coordinates
+        self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['line'])
+        k_coords = [self.y_coord, self.x_coord] # do spectra in cpkm
+        kt_coords = [self.t_coord, self.y_coord, self.x_coord] # do spectra in cpkm
+
+        # 2. Create xarrays for analysis
+        karin_ssh = xr.DataArray(self.ssh, coords=kt_coords, dims=['sample', 'line', 'pixel'])
+        karin_ssha = xr.DataArray(self.ssha, coords=kt_coords, dims=['sample', 'line', 'pixel'])
+        
+        if hasattr(self, 'ssh_mean') and self.ssh_mean is not None:
+            karin_mean = xr.DataArray(self.ssh_mean, coords=k_coords, dims=['line', 'pixel'])
+            self.spec_tmean = swot.mean_power_spectrum(karin_mean, self.window, 'line', ['pixel'])
+        
+        if hasattr(self, 'ssh_mean_highpass') and self.ssh_mean_highpass is not None:
+            karin_mean_filtered = xr.DataArray(self.ssha_mean_highpass, coords=k_coords, dims=['line', 'pixel'])
+            self.spec_filt_tmean = swot.mean_power_spectrum(karin_mean_filtered, self.window, 'line', ['pixel'])
+        
+        if hasattr(self, 'tide') and self.tide is not None:
+            karin_tide = xr.DataArray(self.tide, coords=kt_coords, dims=['sample', 'line', 'pixel'])
+            self.spec_tide = swot.mean_power_spectrum(karin_tide, self.window, 'line', ['sample', 'pixel'])
+        
+        # 3. Remove spatial mean for anomaly spectra
+        karin_spatial_mean = swot.spatial_mean(karin_ssha, ['line', 'pixel'])
+        karin_anomsp = karin_ssha - karin_spatial_mean
+
+        # 4. Perform spectral analysis using the object's own data
+        self.spec_ssh = swot.mean_power_spectrum(karin_ssh, self.window, 'line', ['sample', 'pixel'])
+        self.spec_ssha = swot.mean_power_spectrum(karin_ssha, self.window, 'line', ['sample', 'pixel'])
+        self.spec_alongtrack_av = swot.mean_power_spectrum(karin_anomsp, self.window, 'line', ['sample', 'pixel'])
+        self.spec_alongtrack_ins = swot.mean_power_spectrum(karin_anomsp, self.window, 'line', ['pixel'])
+        self.spec_alongtrack_time_av = swot.mean_power_spectrum(karin_anomsp, self.window, 'line', ['sample'])
+
+        # 5. Store wavenumbers in various useful forms 
+        self.wavenumbers_ord = self.spec_alongtrack_ins.freq_line        # ordinary wavenumbers in cycles/m
+        self.wavenumbers = self.wavenumbers_ord                          # we default to using the ordinary wavenumbers
+        self.wavenumbers_cpkm = self.wavenumbers_ord * 1e3               # cycles/km
+        self.wavenumbers_ang = self.wavenumbers_cpkm * 2 * np.pi         # angular wavenumbers in rads/m
+        self.wavenumbers_length = 1 / self.wavenumbers_ord               # lengths in km
 
 class NadirData:
     def __init__(self, num_cycles, track_length_nadir, lat_min, lat_max, pass_number):
@@ -129,45 +140,12 @@ class NadirData:
         self.lat_min = lat_min
         self.lat_max = lat_max
         self.pass_number = pass_number
-        
-    # def distances(self, samp_indx=1):
-    #     if self.lon.ndim == 2:
-    #         # Case: 2D arrays of shape (ntime, track_length)
-    #         for i in range(self.lon.shape[0]):
-    #             if not np.any(np.isfinite(self.ssh[i, :])):
-    #                 continue
-    #             if not np.any(np.isfinite(self.lon[i, :])) or not np.any(np.isfinite(self.lat[i, :])):
-    #                 continue
-
-    #             dy_vals = 1e3 * swot.haversine_dx(self.lon[i, :], self.lat[i, :])
-    #             avg_dy = np.nanmean(dy_vals)
-    #             if not np.isnan(avg_dy):
-    #                 self.dy = avg_dy
-    #                 print(f"Using index {i}. Nadir spacing: dy = {self.dy:.2f} m")
-    #                 return
-
-    #     elif self.lon.ndim == 1:
-    #         # Case: 1D arrays of shape (track_length,)
-    #         if not np.any(np.isfinite(self.ssh)):
-    #             raise RuntimeError("No valid SSH data for nadir.")
-
-    #         if not np.any(np.isfinite(self.lon)) or not np.any(np.isfinite(self.lat)):
-    #             raise RuntimeError("Invalid lat/lon in nadir.")
-
-    #         dy_vals = 1e3 * swot.haversine_dx(self.lon, self.lat)
-    #         avg_dy = np.nanmean(dy_vals)
-    #         if not np.isnan(avg_dy):
-    #             self.dy = avg_dy
-    #             print(f"Nadir spacing: dy = {self.dy:.2f} m")
-    #             return
-
-    #     else:
-    #         raise ValueError("nadir.lon must be 1D or 2D")
-
-    #     raise RuntimeError("No valid sampling index with finite dy found.")
+        self.time = None                 # seconds (num_cycles, track_length_nadir)
+        self.time_dt = None              # np.datetime64[ns] (num_cycles, track_length_nadir)
+        self.cycle_dates = None          # np.datetime64[ns] (num_cycles,)
+    
     
     def coordinates(self):
-        
         self.x_km, self.y_km = swot.convert_to_xy_grid(self, self.karin)
 
         delta_x = np.diff(self.x_km)
@@ -185,6 +163,32 @@ class NadirData:
 
         self.t_coord = np.arange(self.num_cycles)
 
+    def compute_spectra(self):
+        """Computes all power spectra for the Nadir data."""
+        print("Computing Nadir spectra...")
+        # 1. window and coordinates
+        self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['nadir_line'])
+        nt_coords = [self.t_coord, self.y_coord]
+        
+        # 2. Create xarrays for analysis
+        nadir_ssh = xr.DataArray(self.ssh, coords=nt_coords, dims=['sample', 'nadir_line'])
+        
+        # 3. Remove spatial mean for anomaly spectra
+        nadir_spatial_mean = swot.spatial_mean(nadir_ssh, ['nadir_line'])
+        nadir_anomsp = nadir_ssh - nadir_spatial_mean
+
+        # 4. Perform spectral analysis
+        self.spec_ssh = swot.mean_power_spectrum(nadir_ssh, self.window, 'nadir_line', ['sample'])
+        self.spec_alongtrack_av = swot.mean_power_spectrum(nadir_anomsp, self.window, 'nadir_line', ['sample'])
+        self.spec_alongtrack_ins = swot.mean_power_spectrum(nadir_anomsp, self.window, 'nadir_line', [])
+        
+        # 5. Store wavenumbers in various useful forms 
+        self.wavenumbers_ord = self.spec_alongtrack_ins.freq_nadir_line  # ordinary wavenumbers in cycles/m
+        self.wavenumbers = self.wavenumbers_ord                          # we default to using the ordinary wavenumbers
+        self.wavenumbers_cpkm = self.wavenumbers_ord * 1e3               # cycles/km
+        self.wavenumbers_ang = self.wavenumbers_cpkm * 2 * np.pi         # angular wavenumbers in rads/m
+        self.wavenumbers_length = 1 / self.wavenumbers_ord               # lengths in km
+        
 
 def init_swot_arrays(dims, lat_min, lat_max, pass_number):
     ncycles, track_length, track_length_nadir = dims

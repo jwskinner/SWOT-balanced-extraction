@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH -t 24:00:00
+#SBATCH -t 48:00:00
 
 #SBATCH --partition=compute
 #SBATCH --nodes 1
 #SBATCH --export=ALL
 #SBATCH --account=cit197
-#SBATCH --mem=16G
-#SBATCH --ntasks-per-node=1
+#SBATCH --mem=128G
+#SBATCH --ntasks-per-node=2
 
 module load slurm
 source /home/jskinner1/miniconda3/bin/activate
@@ -20,4 +20,4 @@ fi
 
 conda activate d3
 
-./download_karin_calval.bash 
+python3 Interpolate_the_gap.py

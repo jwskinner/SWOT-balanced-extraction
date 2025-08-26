@@ -197,6 +197,7 @@ def build_covariance_matrix(cov_func, x, y):
     return cov_func(np.hypot(x[:, None] - x, y[:, None] - y))
 
 def build_noise_matrix(nk_func, xk, yk, sigma, nn, n_obs):
+    print("Calculating noise matrices...")
     Nk = nk_func(np.hypot(xk[:, None] - xk, yk[:, None] - yk))
     Nn = sigma**2 * np.eye(nn)
     N = np.block([[Nk, np.zeros((n_obs, nn))], [np.zeros((nn, n_obs)), Nn]])
@@ -221,42 +222,84 @@ def generate_signal_and_noise(F, Fk, sigma, nxny, nn):
     eta = np.concatenate((eta_k, eta_n))
     return h, eta, eta_k, eta_n
 
-# def make_target_grid(karin, extend=False):
-#     nx = karin.track_length
-#     if extend: 
-#         ny = karin.total_width + 4 # makes a 64 pt grid useful for the ST analysis
-#     else: 
-#         ny = karin.total_width
-#     delta_kx = karin.dx
-#     delta_ky = karin.dy
-#     xt_1d = np.arange(0.5, nx, 1) * delta_kx
-#     yt_1d = np.arange(0.5, ny, 1) * delta_ky
-#     Xt, Yt = np.meshgrid(xt_1d, yt_1d)
-#     return Xt.flatten(), Yt.flatten(), nx, ny
+def generate_synthetic_realizations(swot, F, Fk, sigma_noise, nx, ny, nn, n_realizations):
+    """Generate n number of synthetic signal and noise realizations."""
+    hs_list = []
+    etas_list = []
+    etas_k = []
+    etas_n = []
+    
+    for i in range(n_realizations):
+        h, eta, eta_k, eta_n = swot.generate_signal_and_noise(F, Fk, sigma_noise, nx * ny, nn)
+        etas_k.append(eta_k.reshape(ny, nx))
+        etas_n.append(eta_n)
+        hs_list.append(h)
+        etas_list.append(eta)
+    
+    return (np.array(hs_list, dtype=object), 
+            np.array(etas_list, dtype=object),
+            np.array(etas_k, dtype=object), 
+            np.array(etas_n, dtype=object))
 
-def make_target_grid(karin, extend=False):
-    
-    ny = karin.track_length
-    y_idx = np.arange(ny) + 0.5 
-    y_coord = karin.dy * y_idx
-    
+def make_target_grid(karin, extend=False, dx=None, dy=None):
+
+    # Use observed x/y extent from the data class 
+    x_min = np.nanmin(karin.x_grid)
+    x_max = np.nanmax(karin.x_grid)
+    y_min = np.nanmin(karin.y_grid)
+    y_max = np.nanmax(karin.y_grid)
+
+    # Default to KaRIn spacing if not provided
+    if dx is None:
+        dx = karin.dx
+    if dy is None:
+        dy = karin.dy
+
+    # Extension for ST analysis (pads with ~2 grid points on each side)
     if extend:
-        nx = karin.total_width + 4 
-    else: 
-        nx = karin.total_width 
-   
-    x_idx = np.arange(nx) + 0.5 
-    x_coord = karin.dx * x_idx
+        x_min -= 2 * dx
+        x_max += 2 * dx
 
-    X, Y = np.meshgrid(x_coord, y_coord) 
-    
-    return X.flatten(order="C"), Y.flatten(order="C"), nx, ny
+    # 1D grid arrays
+    x_target = np.arange(x_min, x_max + dx, dx)
+    y_target = np.arange(y_min, y_max + dy, dy)
+
+    # 2D mesh
+    Xt, Yt = np.meshgrid(x_target, y_target)
+
+    return Xt.flatten(), Yt.flatten(), len(x_target), len(y_target)
 
 def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     print("Estimating signal on target points...")
     start_time = time.time()
     R = c(np.hypot(xt[:, None] - x, yt[:, None] - y))
     ht = R @ la.solve(C + N, h)
+    print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
+    return ht
+
+def estimate_signal_on_target_blocked(c, xt, yt, x, y, C, N, h, block_size=2000):
+    """
+    Compute ht = R @ (C+N)^{-1} h in blocks to reduce memory.
+    Arguments are the same as your original function.
+    """
+    print("Estimating signal on target points...")
+    start_time = time.time()
+
+    # precompute weights once
+    w = la.solve(C + N, h)
+
+    M = len(xt)
+    ht = np.empty(M, dtype=w.dtype)
+
+    # loop over blocks of target points
+    for i0 in range(0, M, block_size):
+        i1 = min(M, i0 + block_size)
+        dx = xt[i0:i1, None] - x[None, :]
+        dy = yt[i0:i1, None] - y[None, :]
+        r = np.hypot(dx, dy)       # (block, K)
+        Rb = c(r)                  # (block, K)
+        ht[i0:i1] = Rb @ w         # multiply block
+
     print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
     return ht
 
