@@ -105,6 +105,7 @@ SWOT_data/
 outputs/
 NA_sim_outputs/
 balanced_outputs/
+logs/
 
 # ignore the slurm files 
 *.out 
