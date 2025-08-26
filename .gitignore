@@ -107,6 +107,7 @@ NA_sim_outputs/
 balanced_outputs/
 logs/
 NA-Sim_balanced_outputs/
+balanced_outputs
 
 # ignore the slurm files 
 *.out 
