@@ -1,2 +1,0 @@
-/home/jskinner1/SWOT_tools/src/JWS_SWOT_toolbox/import_and_process.py:209: RuntimeWarning: Degrees of freedom <= 0 for slice.
-  varts = np.nanvar(ssha_array, axis=(1, 2))
