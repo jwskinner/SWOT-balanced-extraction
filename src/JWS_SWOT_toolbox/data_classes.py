@@ -143,6 +143,8 @@ class NadirData:
         self.time = None                 # seconds (num_cycles, track_length_nadir)
         self.time_dt = None              # np.datetime64[ns] (num_cycles, track_length_nadir)
         self.cycle_dates = None          # np.datetime64[ns] (num_cycles,)
+        self.lat_full = None
+        self.lon_full = None
     
     
     def coordinates(self):

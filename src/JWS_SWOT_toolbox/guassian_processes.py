@@ -267,7 +267,7 @@ def make_target_grid(karin, extend=False, dx=None, dy=None):
     # 2D mesh
     Xt, Yt = np.meshgrid(x_target, y_target)
 
-    return Xt.flatten(), Yt.flatten(), len(x_target), len(y_target)
+    return Xt.flatten(), Yt.flatten(), len(x_target), len(y_target), x_target, y_target
 
 def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     print("Estimating signal on target points...")

@@ -163,6 +163,9 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                     lat  = data['latitude'][indx, i0:i1]
                     lon  = data['longitude'][indx, i0:i1]
 
+                    karin.lat_full = np.array(data.variables['latitude'][indx,:], copy=True)
+                    karin.lon_full = np.array(data.variables['longitude'][indx,:], copy=True)
+
                     # quality
                     if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual != 0):
                         bad_strips_quality.append((cycle, side))

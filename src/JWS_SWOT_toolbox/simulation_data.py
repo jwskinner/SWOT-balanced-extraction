@@ -315,6 +315,7 @@ def interpolate_onto_nadir_grid(XC, YC, nadir_lon, nadir_lat, ssh_model=None, bu
     out[tfin] = lin
     return out
 
+
 def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
  
     import os
@@ -330,46 +331,15 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
             out = (lon + 180.0) % 360.0 - 180.0
         return out
 
-    def _swath_mask_per_lat(XC, YC, karin_lat2d, karin_lon2d):
-        """
-        Boolean mask selecting sim-grid cells inside the KaRIn swath outline,
-        using per-row lon_min(lat) and lon_max(lat). Gap is ignored.
-        """
-        # Per-row stats (ignore NaNs)
-        lat_curve = np.nanmean(karin_lat2d, axis=1)      # (L,)
-        lon_min   = np.nanmin(karin_lon2d, axis=1)       # (L,)
-        lon_max   = np.nanmax(karin_lon2d, axis=1)       # (L,)
-        valid = np.isfinite(lat_curve) & np.isfinite(lon_min) & np.isfinite(lon_max)
-        if valid.sum() < 2:
-            return np.zeros_like(XC, dtype=bool)
-
-        lat_curve   = lat_curve[valid]
-        lon_min_cur = lon_min[valid]
-        lon_max_cur = lon_max[valid]
-
-        # Interpolate lon bounds as functions of latitude onto sim YC
-        y = YC.ravel()
-        lonmin_at_y = np.interp(y, lat_curve, lon_min_cur, left=np.nan, right=np.nan)
-        lonmax_at_y = np.interp(y, lat_curve, lon_max_cur, left=np.nan, right=np.nan)
-        lonmin_at_y = lonmin_at_y.reshape(YC.shape)
-        lonmax_at_y = lonmax_at_y.reshape(YC.shape)
-
-        mask = (XC >= lonmin_at_y) & (XC <= lonmax_at_y)
-        mask &= np.isfinite(lonmin_at_y) & np.isfinite(lonmax_at_y)
-        return mask
-
     # ---- inputs & basic coercions ----
-    karin_lat = np.asarray(karin.lat)
-    karin_lon = np.asarray(karin.lon)
+    karin_lat = np.asarray(karin.lat)[0]
+    karin_lon = np.asarray(karin.lon)[0]
+    karin_lat_full = np.asarray(karin.lat_full)
+    karin_lon_full = np.asarray(karin.lon_full)
     nadir_lat = np.asarray(nadir.lat)[0]
     nadir_lon = np.asarray(nadir.lon)[0]
 
-    if karin_lat.ndim == 3: karin_lat = karin_lat[0]
-    if karin_lon.ndim == 3: karin_lon = karin_lon[0]
-    if karin_lat.ndim != 2 or karin_lon.ndim != 2:
-        raise ValueError(f"KaRIn lat/lon must be 2-D; got lat={karin_lat.shape}, lon={karin_lon.shape}")
-
-    ssh_karin_list, ssh_nadir_list, used = [], [], []
+    ssh_karin_list, ssh_karin_full_list, ssh_nadir_list, used = [], [], [], []
     ssh_full_box_list, lat_full_box_list, lon_full_box_list = [], [], []
 
     # ---- main loop ----
@@ -390,50 +360,27 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
 
         # Interpolations (your existing helpers)
         ssh_karin = np.asarray(interpolate_onto_karin_grid(XC, YC, ssh, karin_lon, karin_lat))
+        ssh_karin_full = np.asarray(interpolate_onto_karin_grid(XC, YC, ssh, karin_lon_full, karin_lat_full))
         ssh_nadir = np.asarray(interpolate_onto_nadir_grid(XC, YC, nadir_lon, nadir_lat, ssh))
         if ssh_karin.ndim != 2:
             raise ValueError(f"Interpolated KaRIn SSH is not 2-D: {ssh_karin.shape}")
 
         ssh_karin_list.append(ssh_karin)
+        ssh_karin_full_list.append(ssh_karin_full)
         ssh_nadir_list.append(ssh_nadir)
         used.append(d)
-
-        # Per-lat swath mask → crop to tight box, keep non-swath as NaN
-        mask = _swath_mask_per_lat(XC, YC, karin_lat, karin_lon)
-        if mask.any():
-            r = np.where(mask.any(axis=1))[0]; c = np.where(mask.any(axis=0))[0]
-            r0, r1 = r.min(), r.max() + 1; c0, c1 = c.min(), c.max() + 1
-            ssh_box = ssh[r0:r1, c0:c1].astype(np.float32, copy=True)
-            XC_box  = XC [r0:r1, c0:c1].astype(np.float64, copy=True)
-            YC_box  = YC [r0:r1, c0:c1].astype(np.float64, copy=True)
-            m_box   = mask[r0:r1, c0:c1]
-            ssh_box[~m_box] = np.nan
-            lat_box, lon_box = YC_box, XC_box
-        else:
-            # no overlap: return NaN box of same size as input
-            ssh_box = np.full_like(ssh, np.nan, dtype=np.float32)
-            lat_box = YC.astype(np.float64, copy=True)
-            lon_box = XC.astype(np.float64, copy=True)
-
-        ssh_full_box_list.append(ssh_box)
-        lat_full_box_list.append(lat_box)
-        lon_full_box_list.append(lon_box)
 
     if not ssh_karin_list:
         raise RuntimeError("No simulation snapshots could be interpolated.")
 
     # ---- stack & return ----
-    ssh_karin_full = np.stack(ssh_karin_list, axis=0)       # (T,L,W)
-    ssh_nadir_full = np.stack(ssh_nadir_list, axis=0)       # (T, L) or (T,)
-    ssh_full_box   = np.stack(ssh_full_box_list, axis=0)    # (T,ny_box,nx_box) with NaNs outside swath
-    lat_full_box   = np.stack(lat_full_box_list, axis=0)    # (T,ny_box,nx_box)
-    lon_full_box   = np.stack(lon_full_box_list, axis=0)    # (T,ny_box,nx_box)
+    ssh_karin_out = np.stack(ssh_karin_list, axis=0)       # (T,L,W)
+    ssh_karin_full_out = np.stack(ssh_karin_full_list, axis=0)
+    ssh_nadir_out = np.stack(ssh_nadir_list, axis=0)       # (T, L) or (T,)
 
-    return (ssh_karin_full, ssh_nadir_full,
-            karin_lat, karin_lon, nadir_lat, nadir_lon,
-            used,
-            ssh_full_box, lat_full_box, lon_full_box)
 
+    return (ssh_karin_full_out, ssh_karin_out, ssh_nadir_out,
+            used)
 
 
 # ---------- Legacy functions (kept for backward compatibility) ----------
@@ -533,60 +480,8 @@ def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, l
     
     return ssh_all, lat, lon
 
-def sample_NA_sim_to_karin_and_nadir(ssh_model, lat_model, lon_model, 
-                                     karin_target_shape, nadir_target_shape,
-                                     return_full_sim=True):
-    """Sample NA simulation to match KaRIn and nadir target shapes."""
-    
-    ntime, track_len, NA_total_width = ssh_model.shape
-    _, track_len_target, total_width = karin_target_shape
-    _, track_len_nadir = nadir_target_shape
 
-    swath_width = 25
-    track_axis = np.linspace(0, track_len - 1, track_len_target)
 
-    # Interpolate SSH
-    ssh_interp = np.empty((ntime, track_len_target, NA_total_width))
-    for i in range(ntime):
-        f = interp1d(np.arange(track_len), ssh_model[i], axis=0, kind='linear', 
-                     bounds_error=False, fill_value='extrapolate')
-        ssh_interp[i] = f(track_axis)
-
-    # Interpolate LAT and LON
-    lat_interp = interp1d(np.arange(track_len), lat_model, axis=0, kind='linear',
-                          bounds_error=False, fill_value='extrapolate')(track_axis)
-    lon_interp = interp1d(np.arange(track_len), lon_model, axis=0, kind='linear',
-                          bounds_error=False, fill_value='extrapolate')(track_axis)
-
-    # Build KaRIn swath: gap in center, swath_width = 25 pixels per side
-    NA_sim_karin_ssh = np.full((ntime, track_len_target, total_width), np.nan)
-    NA_sim_karin_ssh[:, :, :swath_width] = ssh_interp[:, :, :swath_width]
-    NA_sim_karin_ssh[:, :, 35:60] = ssh_interp[:, :, 35:60]
-
-    NA_sim_karin_lat = np.full((track_len_target, total_width), np.nan)
-    NA_sim_karin_lon = np.full((track_len_target, total_width), np.nan)
-    NA_sim_karin_lat[:, :swath_width] = lat_interp[:, :swath_width]
-    NA_sim_karin_lon[:, :swath_width] = lon_interp[:, :swath_width]
-    NA_sim_karin_lat[:, 35:60] = lat_interp[:, 35:60]
-    NA_sim_karin_lon[:, 35:60] = lon_interp[:, 35:60]
-
-    # Sample Nadir track
-    nadir_track_axis = np.linspace(0, track_len_target - 1, track_len_nadir).astype(int)
-    NA_sim_nadir_ssh = ssh_interp[:, nadir_track_axis, 30]
-    NA_sim_nadir_lat = lat_interp[nadir_track_axis, 30]
-    NA_sim_nadir_lon = lon_interp[nadir_track_axis, 30]
-
-    if return_full_sim:
-        return (
-            NA_sim_karin_ssh, NA_sim_karin_lat, NA_sim_karin_lon,
-            NA_sim_nadir_ssh, NA_sim_nadir_lat, NA_sim_nadir_lon,
-            ssh_interp, lat_interp, lon_interp
-        )
-    else:
-        return (
-            NA_sim_karin_ssh, NA_sim_karin_lat, NA_sim_karin_lon,
-            NA_sim_nadir_ssh, NA_sim_nadir_lat, NA_sim_nadir_lon
-        )
 
 
 #### ------ OLD ------
@@ -620,7 +515,7 @@ def interpolate_swot_pass_griddata_optimized(XC, YC, ssh_model, lon_swot, lat_sw
     ssh_interpolated = griddata(source_points, source_values, target_points,
                                 method='linear', fill_value=np.nan)
 
-    return ssh_interpolated.reshape(lat_swot.shape)
+    return ssh_interpolated.reshape(lat_swot.shape), lat_swot, lon_swot
 
 
 def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, lat_min=None, lat_max=None):

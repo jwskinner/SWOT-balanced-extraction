@@ -5,7 +5,7 @@ Balanced reconstruction tests on the NA simulation data. The functions in this s
 
 """
 import os
-os.environ["NUMEXPR_MAX_THREADS"] = "1"  
+os.environ["NUMEXPR_MAX_THREADS"] = "4"  
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 import psutil, time
 import argparse
@@ -29,12 +29,12 @@ import cartopy.crs as ccrs
 
 # ------------------------- CONFIG -------------------------
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'  # CAL/VAL data root
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'  # CAL/VAL data root
+#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'  # CAL/VAL data root
 NA_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots"
 
-pass_number = 507
-lat_min = 27
-lat_max = 29
+pass_number = 9
+lat_min = 28
+lat_max = 33
 
 # plotting
 SSH_VMIN, SSH_VMAX = -0.20, 0.20     # meters
@@ -42,7 +42,7 @@ VORT_VMIN, VORT_VMAX = -1.0, 1.0     # zeta/f color limits
 PNG_DPI = 200
 
 # parallel
-N_JOBS = 1
+N_JOBS = 4
 BACKEND = "loky"
 
 # ---------------------- PASS COMMAND LINE ARGS ----------------------
@@ -67,12 +67,18 @@ def make_output_dirs(pass_num: int):
 ROOT_DIR, FIELDS_DIR, PLOTS_DIR = make_output_dirs(pass_number)
 
 # ------------------- SWOT DATA IMPORT & PREP -------------------
-# First step is we need to import the SWOT data
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(data_folder, pass_number)
 
-sample_index = 2 
-indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], lat_min, lat_max)
-indxs, track_length_nadir = swot.get_nadir_track_indices(nadir_files[sample_index][0], lat_min, lat_max)
+for sample_index in range(len(karin_files)): # find a valid file and use its structure to setup the arrays
+    try:
+        indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], lat_min, lat_max)
+        indxs, track_length_nadir = swot.get_nadir_track_indices(nadir_files[sample_index][0], lat_min, lat_max)
+        break  # success, we will use sample_index throughout now for plots etc.
+    except IndexError:
+        continue
+else:
+    raise RuntimeError("No valid index found in karin/nadir files")
+
 dims_SWOT = [len(shared_cycles), track_length, track_length_nadir]
 karin, nadir = swot.init_swot_arrays(dims_SWOT, lat_min, lat_max, pass_number)
 
@@ -104,15 +110,15 @@ _, _, matched_dates = swot.pick_range_from_karin_times(
 #  Match the simulation dates with the SWOT dates
 NA_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots"
 
-# 1) choose sim dates for KaRIn times
+# -- choose sim dates for KaRIn times
 _, _, matched_dates = swot.pick_range_from_karin_times(
     karin_time_dt=karin.time_dt,
     data_folder=NA_folder,
     mode="cyclic"    # or 'absolute' if sim year == SWOT year
 )
 
-# 2) interpolate each sim day onto the KaRIn grid
-NA_karin_ssh, NA_nadir_ssh, NA_karin_lat, NA_karin_lon, NA_nadir_lat, NA_nadir_lon, used_dates, original_ssh_list, original_lats_list, original_lons_list = swot.load_sim_on_karin_nadir_grids(
+# -- interpolate each sim day onto the KaRIn grid - we get a full grid (the pass), one with a gap (KaRIn), and the nadir points
+NA_karin_full_ssh, NA_karin_ssh, NA_nadir_ssh, used_dates = swot.load_sim_on_karin_nadir_grids(
     karin, 
     nadir, 
     data_folder=NA_folder, 
@@ -126,17 +132,17 @@ track_length_nadir = NA_nadir_ssh.shape[1]
 dims_NA = [ncycles, track_length_karin, track_length_nadir]
 
 karin_NA, nadir_NA = swot.init_swot_arrays(dims_NA, lat_min, lat_max, pass_number) # init a class for the karin/nadir parts of the data
-karin_NA.ssh_orig = original_ssh_list # save the original ssh
+karin_NA.ssh_orig = NA_karin_full_ssh # save the original ssh
 karin_NA.ssh = NA_karin_ssh
 karin_NA.ssha = NA_karin_ssh - np.nanmean(NA_karin_ssh, axis=(1, 2), keepdims=True)
-karin_NA.lat = NA_karin_lat
-karin_NA.lon = NA_karin_lon
+karin_NA.lat = karin.lat  # init the NA pass with the KaRIn lat/lon grids
+karin_NA.lon = karin.lon
 karin_NA.date_list=matched_dates  
 
 nadir_NA.ssh = NA_nadir_ssh
 nadir_NA.ssha = NA_nadir_ssh - np.nanmean(NA_nadir_ssh, axis=(1), keepdims=True)
-nadir_NA.lat = NA_nadir_lat
-nadir_NA.lon = NA_nadir_lon
+nadir_NA.lat = nadir.lat
+nadir_NA.lon = nadir.lon
 
 karin_NA.coordinates()
 nadir_NA.coordinates()
@@ -147,10 +153,8 @@ nadir_NA.compute_spectra()
 print(f"Loaded NA sim data for {len(used_dates)} dates")
 
 # ------ FIGURE: SWOT vs Sim data + Spectra ------
-
 swot.set_plot_style()
 
-index = 2
 vmin, vmax = -0.5, 0.5
 ylims = (1e-5, 1e5)
 cmap = cmocean.cm.balance
@@ -161,12 +165,12 @@ gs = GridSpec(1, 3, width_ratios=[1, 1, 1.6], figure=fig)
 # ───── Simulation Map ─────
 ax0 = fig.add_subplot(gs[0, 0], projection=ccrs.PlateCarree())
 sc0 = ax0.scatter(
-    NA_karin_lon.flatten(), NA_karin_lat.flatten(),
-    c=karin_NA.ssha[index].flatten(), s=3, vmin=vmin, vmax=vmax, cmap=cmap,
+    karin.lon[sample_index].flatten(), karin.lat[sample_index].flatten(),
+    c=karin_NA.ssha[sample_index].flatten(), s=3, vmin=vmin, vmax=vmax, cmap=cmap,
     transform=ccrs.PlateCarree(), marker='o'
 )
 ax0.scatter(
-    NA_nadir_lon, NA_nadir_lat, c=nadir_NA.ssha[index], vmin=vmin, vmax=vmax,
+    nadir.lon[sample_index], nadir.lat[sample_index], c=nadir_NA.ssha[sample_index], vmin=vmin, vmax=vmax,
     cmap=cmap, s=1, marker='o', transform=ccrs.PlateCarree()
 )
 ax0.coastlines()
@@ -179,13 +183,13 @@ cbar0.set_label("SSHA (m)")
 # ───── SWOT Map ─────
 ax1 = fig.add_subplot(gs[0, 1], projection=ccrs.PlateCarree())
 sc1 = ax1.scatter(
-    karin.lon[index], karin.lat[index],
-    c=karin.ssha[index], s=3, vmin=vmin, vmax=vmax, cmap=cmap,
+    karin.lon[sample_index], karin.lat[sample_index],
+    c=karin.ssha[sample_index], s=3, vmin=vmin, vmax=vmax, cmap=cmap,
     transform=ccrs.PlateCarree(), marker='o'
 )
 ax1.scatter(
-    nadir.lon[index], nadir.lat[index],
-    c=nadir.ssh[index], s=1, vmin=vmin, vmax=vmax,
+    nadir.lon[sample_index], nadir.lat[sample_index],
+    c=nadir.ssh[sample_index], s=1, vmin=vmin, vmax=vmax,
     cmap=cmap, transform=ccrs.PlateCarree(), marker='o'
 )
 ax1.coastlines()
@@ -297,7 +301,7 @@ poptcwg_karin_NA, pcovcwg_karin_NA = swot.fit_spectrum(karin_NA, spec_ssh_noisy,
 swot.plot_spectral_fits(karin_NA, nadir_NA, poptcwg_karin_NA, poptcwg_nadir, output_filename=os.path.join(ROOT_DIR, 'synth_karin_nadir_fit.pdf'))
 
 # --------------------- TARGET GRID ------------------------
-xt, yt, nxt, nyt = swot.make_target_grid(karin, extend=False)  # meters, we extend it slightly for the ST
+xt, yt, nxt, nyt, x_target, y_target = swot.make_target_grid(karin, extend=True)  # meters, we extend it slightly for the ST
 xt_km = xt * 1e-3
 yt_km = yt * 1e-3
 XX, YY = np.meshgrid(xt_km, yt_km)  # shapes (nyt, nxt)
@@ -322,6 +326,11 @@ def process_frame(idx: int):
     hnn = hn[mask_n]
     xnn = xn[mask_n]
     ynn = yn[mask_n]
+
+    # --- skip frame if no finite values
+    if hkk.size == 0 or hnn.size == 0:
+        print(f"Frame {idx:03d} skipped (no finite SWOT data)")
+        return None
 
     # --- Concatenate obs
     h_obs = np.concatenate([hkk, hnn])
@@ -623,7 +632,7 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
     axs.set_xlabel('wavenumber (cpkm)')
     axs.set_ylabel('PSD (m$^2$ cpm$^{-1}$)')
     axs.set_xlim(1e-3, 3e-1)
-    axs.set_ylim(1e-3, 1e4)
+    axs.set_ylim(1e-3, 1e5)
     axs.legend(loc='lower left', frameon=False, fontsize=9)
 
     # save
@@ -632,14 +641,12 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
     plt.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close(fig) 
 
-
-
 # -------------------------- RUN ---------------------------
 if __name__ == "__main__":
     n_frames = karin.ssha.shape[0]
 
     results = Parallel(n_jobs=N_JOBS, backend=BACKEND)(
-        delayed(process_frame)(idx) for idx in range(2)  # test run
+        delayed(process_frame)(idx) for idx in range(n_frames)  # test run
     )
 
 # ----------------- write a NetCDF output -----------------
@@ -648,7 +655,7 @@ try:
     print(f"Processing {T} frames for NetCDF output")
     processed_indices = list(range(T))
 
-    # ---- helper: stack list of 2D arrays (pad if needed) ----
+    # stack list of 2D arrays (pad if needed) 
     def _stack_2d_list(arr_list, dtype="f4"):
         arrs = [np.asarray(a) for a in arr_list]
         ny = max(a.shape[0] for a in arrs)
@@ -658,7 +665,8 @@ try:
             out[i, :a.shape[0], :a.shape[1]] = a
         return out
 
-    def _f(x): return float(np.asarray(x)) # returns array floats for data output
+    # returns array floats for data output
+    def _f(x): return float(np.asarray(x))
 
     # ---- gather balanced fields (SWOT and SYN) saved per-frame ----
     ht_swot_stack = np.empty((T, nyt, nxt), dtype="f4")
@@ -669,11 +677,9 @@ try:
         ht_swot_stack[i] = np.load(p_swot)
         ht_syn_stack[i]  = np.load(p_syn)
 
-    # ---- original sim box (and its lat/lon) ----
-    orig_ssh_stack = _stack_2d_list([original_ssh_list[i]  for i in processed_indices], dtype="f4")
-    orig_lat_stack = _stack_2d_list([original_lats_list[i] for i in processed_indices], dtype="f8")
-    orig_lon_stack = _stack_2d_list([original_lons_list[i] for i in processed_indices], dtype="f8")
-    ny_box, nx_box = orig_ssh_stack.shape[1:]
+    # ---- NA Sim SSH along the pass ----
+    orig_ssh_stack = _stack_2d_list([karin_NA.ssh_orig[i]  for i in processed_indices], dtype="f4")
+    ny_box, nx_box = orig_ssh_stack.shape[1:] # The shape of the cropped sim pass
 
     # ---- coords (km) ----
     x_coords = np.linspace(xt_km.min(), xt_km.max(), nxt)      # along-track, balanced target grid
@@ -682,36 +688,20 @@ try:
     sim_x_km = np.asarray(karin_NA.x_coord) * 1e-3            # along-track on sim-on-KaRIn grid
     sim_y_km = np.asarray(karin_NA.y_coord) * 1e-3            # across-track on sim-on-KaRIn grid
 
-    # KaRIn grid lon/lat are static (2D) for the sim; tile along time for convenience
-    sim_lon_time = np.broadcast_to(karin_NA.lon, (T,) + np.shape(karin_NA.lon))
-    sim_lat_time = np.broadcast_to(karin_NA.lat, (T,) + np.shape(karin_NA.lat))
-
     # ---- time metadata ----
     time_coords = np.arange(T, dtype=np.float64)
     cycle_numbers = [shared_cycles[idx] for idx in processed_indices]
-    datetime_data = [karin.time_dt[idx] for idx in processed_indices]
+    swot_times = np.array([karin.time_dt[idx] for idx in processed_indices], dtype="datetime64[ns]")
+    sim_times  = np.array([used_dates[idx] for idx in processed_indices], dtype="datetime64[ns]")
 
     # # ---- parameter names/arrays for fits ----
-    # # poptcwg_karin: [A_b, lambda_b(m), s_b, A_n, lambda_n(m), s_n]
-    # # poptcwg_karin_NA: same for synthetic fit
-    # # poptcwg_nadir: e.g., [N_n] (noise power or std, depending on your fit fn)
     param6_names = np.array(["A_b", "lambda_b_m", "s_b", "A_n", "lambda_n_m", "s_n"], dtype="U")
     nadir_param_names = np.array(["N_n"], dtype="U")
 
     # ---- dataset ----
     ds = xr.Dataset(
         {
-            # Balanced results
-            "balanced_ssh": (["time", "y", "x"], ht_swot_stack, {
-                "long_name": "Balanced SSH (SWOT obs)",
-                "units": "m"
-            }),
-            "balanced_ssh_sim": (["time", "y", "x"], ht_syn_stack, {
-                "long_name": "Balanced SSH (synthetic SWOT from sim)",
-                "units": "m"
-            }),
-
-            # Original KaRIn/Nadir obs (SWOT)
+            # SWOT Observations
             "karin_ssha": (["time", "karin_y", "karin_x"], karin.ssha[processed_indices], {
                 "long_name": "KaRIn SSHA (SWOT)",
                 "units": "m"
@@ -736,21 +726,24 @@ try:
                 "long_name": "Nadir Latitude (SWOT)",
                 "units": "degrees_north"
             }),
-
-            # Simulation: original box (cropped by per-lat bounds)
-            "sim_box_ssh": (["time", "box_y", "box_x"], orig_ssh_stack, {
-                "long_name": "Original simulation SSH (cropped box)",
+            # Balanced results
+            "balanced_ssh_swot": (["time", "y", "x"], ht_swot_stack, {
+                "long_name": "Balanced SSH (SWOT obs)",
                 "units": "m"
             }),
-            "sim_box_lon": (["time", "box_y", "box_x"], orig_lon_stack, {
-                "long_name": "Original simulation longitude (box)",
+            # NA Sim results
+            "sim_pass_ssh": (["time", "box_y", "box_x"], orig_ssh_stack, {
+                "long_name": "Original simulation SSH along the SWOT pass",
+                "units": "m"
+            }),
+            "sim_pass_lon": (["box_y", "box_x"], karin.lon_full, {
+                "long_name": "Simulation longitude along SWOT pass",
                 "units": "degrees_east"
             }),
-            "sim_box_lat": (["time", "box_y", "box_x"], orig_lat_stack, {
-                "long_name": "Original simulation latitude (box)",
+            "sim_pass_lat": (["box_y", "box_x"], karin.lon_full, {
+                "long_name": "Simulation latitudes along SWOT Pass",
                 "units": "degrees_north"
             }),
-
             # Simulation interpolated to KaRIn/Nadir geometry
             "sim_karin_ssha": (["time", "sim_y", "sim_x"], karin_NA.ssha[processed_indices], {
                 "long_name": "Simulation SSHA on KaRIn grid",
@@ -760,25 +753,27 @@ try:
                 "long_name": "Simulation SSHA on Nadir track",
                 "units": "m"
             }),
-            "sim_karin_lon": (["time", "sim_y", "sim_x"], sim_lon_time, {
+            "sim_karin_lon": (["sim_y", "sim_x"], karin_NA.lon[sample_index], {
                 "long_name": "Simulation longitude on KaRIn grid",
                 "units": "degrees_east"
             }),
-            "sim_karin_lat": (["time", "sim_y", "sim_x"], sim_lat_time, {
+            "sim_karin_lat": (["sim_y", "sim_x"], karin_NA.lon[sample_index], {
                 "long_name": "Simulation latitude on KaRIn grid",
                 "units": "degrees_north"
             }),
-
-            # Synthetic SWOT (noise added to sim)
-            "sim_karin_synth_ssha": (["time", "sim_y", "sim_x"], ssh_noisy[processed_indices], {
+            # Synthetic SWOT observations
+            "synth_karin_ssha": (["time", "sim_y", "sim_x"], ssh_noisy[processed_indices], {
                 "long_name": "Synthetic KaRIn SSHA from simulation",
                 "units": "m"
             }),
-            "sim_nadir_synth_ssha": (["time", "sim_nadir_along"], ssh_nadir_noisy[processed_indices], {
+            "synth_nadir_ssha": (["time", "sim_nadir_along"], ssh_nadir_noisy[processed_indices], {
                 "long_name": "Synthetic Nadir SSHA from simulation",
                 "units": "m"
             }),
-
+            "synth_balanced_ssh": (["time", "y", "x"], ht_syn_stack, {
+                "long_name": "Balanced SSH extracted from synthetic SWOT data",
+                "units": "m"
+            }),
             # Fit parameters (as variables with named coords)
             "fit_params_swot_karin": (["param6"], np.asarray(poptcwg_karin, dtype="f8"), {
                 "long_name": "SWOT KaRIn spectral fit parameters",
@@ -794,8 +789,9 @@ try:
             }),
 
             # Time & meta
-            "cycle_number": (["time"], cycle_numbers, {"long_name": "SWOT Cycle Number", "units": "cycle"}),
-            "time_datetime": (["time"], datetime_data, {"long_name": "Acquisition DateTime"})
+            "swot_cycle_number": (["time"], cycle_numbers, {"long_name": "SWOT Cycle Number", "units": "cycle"}), 
+            "swot_pass_time": (["time"], swot_times, {"long_name": "SWOT pass datetime"}),
+            "sim_pass_time": (["time"], sim_times, {"long_name": "Simulation datetime matched to SWOT"}),
         },
         coords={
             "time": ("time", time_coords, {
@@ -803,17 +799,19 @@ try:
                 "standard_name": "time", "axis": "T",
                 "_CoordinateAxisType": "Time"
             }),
-            # Balanced target grid (km)
-            "x": ("x", x_coords, {"long_name": "Along-track distance", "units": "km"}),
-            "y": ("y", y_coords, {"long_name": "Across-track distance", "units": "km"}),
+            # Balanced target coordinates (km)
+            "xt": ("x", x_target, {"long_name": "Balanced Target Coords", "units": "km"}),
+            "yt": ("y", y_target, {"long_name": "Balanced Target Coords", "units": "km"}),
 
             # KaRIn/Nadir native axes
-            "karin_x": ("karin_x", np.linspace(xt_km.min(), xt_km.max(), karin.total_width),
+            "karin_x": ("karin_x", karin.x_coord,
                         {"long_name": "KaRIn across-track index (km)", "units": "km"}),
-            "karin_y": ("karin_y", np.linspace(yt_km.min(), yt_km.max(), karin.track_length),
+            "karin_y": ("karin_y", karin.y_coord,
                         {"long_name": "KaRIn along-track index (km)", "units": "km"}),
-            "nadir_along": ("nadir_along", np.arange(nadir.ssh.shape[1]) * nadir.dy_km,
+            "nadir_x":  ("nadir_x", nadir.x_coord,
                             {"long_name": "Nadir along-track index", "units": "km"}),
+            "nadir_y":  ("nadir_y", nadir.y_coord,
+                            {"long_name": "Nadir across-track index", "units": "km"}),
 
             # Sim-on-KaRIn axes (km)
             "sim_x": ("sim_x", sim_x_km, {"long_name": "Along-track (sim on KaRIn)", "units": "km"}),
@@ -833,30 +831,27 @@ try:
             "pass_number": pass_number,
             "latitude_range": f"{lat_min}°N to {lat_max}°N",
             "processing_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "spatial_resolution_x": f"{karin.dx_km:.3f} km",
-            "spatial_resolution_y": f"{karin.dy_km:.3f} km",
+            "KaRIn spatial_resolution_x [km]": karin.dx_km,
+            "KaRInspatial_resolution_y [km]": karin.dy_km,
+            "nadir_resolution": nadir.dy_km,
             "n_cycles_processed": T,
             "mission_phase": "CalVal" if "CALVAL" in data_folder.upper() else "Science",
-            # SWOT KaRIn fit
             "swot_fit_karin_A_b":          _f(poptcwg_karin[0]),
             "swot_fit_karin_lambda_b_m":   _f(poptcwg_karin[1]),
             "swot_fit_karin_s_b":          _f(poptcwg_karin[2]),
             "swot_fit_karin_A_n":          _f(poptcwg_karin[3]),
             "swot_fit_karin_lambda_n_m":   _f(poptcwg_karin[4]),
             "swot_fit_karin_s_n":          _f(poptcwg_karin[5]),
-            # SWOT Nadir fit (noise)
             "swot_fit_nadir_N_n":          _f(np.atleast_1d(poptcwg_nadir)[0]),
-            # NA-sim (synthetic) KaRIn fit
             "nasim_fit_karin_A_b":         _f(poptcwg_karin_NA[0]),
             "nasim_fit_karin_lambda_b_m":  _f(poptcwg_karin_NA[1]),
             "nasim_fit_karin_s_b":         _f(poptcwg_karin_NA[2]),
             "nasim_fit_karin_A_n":         _f(poptcwg_karin_NA[3]),
             "nasim_fit_karin_lambda_n_m":  _f(poptcwg_karin_NA[4]),
             "nasim_fit_karin_s_n":         _f(poptcwg_karin_NA[5]),
-            # Handy legend
+    
             "fit_param_names": "A_b, lambda_b_m, s_b, A_n, lambda_n_m, s_n",
             "source_code": "Interpolate_the_gap_NA_sim.py",
-            "source": "JWS, Caltech 2025",
         }
     )
 
