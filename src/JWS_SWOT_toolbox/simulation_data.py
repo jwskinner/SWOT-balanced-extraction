@@ -481,9 +481,6 @@ def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, l
     return ssh_all, lat, lon
 
 
-
-
-
 #### ------ OLD ------
 
 def interpolate_swot_pass_griddata_optimized(XC, YC, ssh_model, lon_swot, lat_swot, buffer=0.5):

@@ -5,7 +5,7 @@ Balanced reconstruction tests on the NA simulation data. The functions in this s
 
 """
 import os
-os.environ["NUMEXPR_MAX_THREADS"] = "4"  
+os.environ["NUMEXPR_MAX_THREADS"] = "1"  
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 import psutil, time
 import argparse
@@ -34,7 +34,7 @@ NA_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots"
 
 pass_number = 9
 lat_min = 28
-lat_max = 33
+lat_max = 29
 
 # plotting
 SSH_VMIN, SSH_VMAX = -0.20, 0.20     # meters
@@ -42,7 +42,7 @@ VORT_VMIN, VORT_VMAX = -1.0, 1.0     # zeta/f color limits
 PNG_DPI = 200
 
 # parallel
-N_JOBS = 4
+N_JOBS = 1
 BACKEND = "loky"
 
 # ---------------------- PASS COMMAND LINE ARGS ----------------------
@@ -260,8 +260,15 @@ C = swot.build_covariance_matrix(c_bal, xobs, yobs)
 N, Nk = swot.build_noise_matrix(c_unb, xk, yk, sigma_noise, nn, nx*ny)
 
 # --- Cholesky Decomposition ---
-F = swot.cholesky_decomp(C, "C")
-Fk = swot.cholesky_decomp(Nk, "Nk")
+try:
+    F = swot.cholesky_decomp(C, "C")
+except np.linalg.LinAlgError:
+    F = swot.cholesky_decomp(C, "C", jitter=True)
+
+try:
+    Fk = swot.cholesky_decomp(Nk, "Nk")
+except np.linalg.LinAlgError:
+    Fk = swot.cholesky_decomp(Nk, "Nk", jitter=True)
 
 # --- Use SWOT Covariance to generate n realizations of the random signal and noise ---
 n_realizations = karin_NA.ssha.shape[0]
@@ -361,6 +368,7 @@ def process_frame(idx: int):
         PLOTS_DIR, f"SWOT_spec_P{pass_number:03d}_C{shared_cycles[idx]:03d}_{idx:03d}.png"
         )
     
+    # try:
     plot_frame(
         ht=ht_vec,                
         index=idx,
@@ -382,6 +390,8 @@ def process_frame(idx: int):
         out_path=spec_path
 
     )
+    # except Exception as e:
+    #     print(f"[Warning] Plotting failed for frame {idx:03d}: {e}")
 
     print(f"Frame SWOT  {idx:03d} → npy: {os.path.basename(out_npy)} | png: {os.path.basename(frame_path)} | png: {os.path.basename(spec_path)}")
     
@@ -433,31 +443,34 @@ def process_frame(idx: int):
         PLOTS_DIR, f"SYN_spec_P{pass_number:03d}_C{shared_cycles[idx]:03d}_{idx:03d}.png"
         )
     
-    plot_frame(
-        ht=ht_syn,                
-        index=idx,
-        karin=karin_NA,
-        nadir=nadir_NA,
-        shared_cycles=shared_cycles,
-        pass_number=pass_number,
-        nyt=nyt, nxt=nxt,
-        out_path=frame_path
-    )
+    try:
+        plot_frame(
+            ht=ht_syn,                
+            index=idx,
+            karin=karin_NA,
+            nadir=nadir_NA,
+            shared_cycles=shared_cycles,
+            pass_number=pass_number,
+            nyt=nyt, nxt=nxt,
+            out_path=frame_path
+        )
 
-    plot_spectrum_comparison(
-        karin_obj=karin_NA,
-        swot_obj=swot,
-        poptcwg_karin_params=poptcwg_karin_NA,
-        ntx=nxt,
-        nyt=nyt,
-        ht_map=ht_syn, 
-        out_path=spec_path
+        plot_spectrum_comparison(
+            karin_obj=karin_NA,
+            swot_obj=swot,
+            poptcwg_karin_params=poptcwg_karin_NA,
+            ntx=nxt,
+            nyt=nyt,
+            ht_map=ht_syn, 
+            out_path=spec_path
+        )
+    except Exception as e:
+        print(f"[Warning] Plotting failed for frame {idx:03d}: {e}")
 
-    )
 
     print(f"Frame SYN  {idx:03d} → npy: {os.path.basename(out_npy)} | png: {os.path.basename(frame_path)} | png: {os.path.basename(spec_path)}")
     
-    return out_npy, frame_path
+    return {"idx": idx} # put out the frame when completed
 
 # ---------------- PLOTTING (per frame) --------------
 def plot_frame(ht, index, karin, nadir, shared_cycles, pass_number, nyt, nxt, out_path=None):
@@ -607,15 +620,18 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
     spbalanced = swot_obj.balanced_model(k_karin_sliced, *poptcwg_karin_params[0:3])
     spunbalanced = swot_obj.unbalanced_model(k_karin_sliced, *poptcwg_karin_params[3:7])
 
-    nx_dim = ht_map_2d.shape[1] # Along-track dimension
-    ny_dim = ht_map_2d.shape[0] # Across-track dimension 
-    ht_map_coords = {
-        'pixel': np.arange(0, ny_dim) * karin_obj.dy, # Across-track coordinate
-        'line': np.arange(0, nx_dim) * karin_obj.dx   # Along-track coordinate
+    ht_map_lp = ht_map_2d
+    
+    ht_map_coords = { 
+    'pixel': np.arange(0.5, np.shape(ht_map_2d)[0], 1.0) * karin.dy, 
+    'line': np.arange(0.5, np.shape(ht_map_2d)[1], 1.0) * karin.dx
     }
-    ht_map_xr = xr.DataArray(ht_map_2d, coords=ht_map_coords, dims=['pixel', 'line'])
-    spec_ht_map_2s = swot_obj.mean_power_spectrum(ht_map_xr, karin_obj.window, 'line', ['pixel'])
-    spec_ht_map = spec_ht_map_2s[int(karin_obj.track_length/2):][1:]
+
+    ht_map_xr = xr.DataArray(ht_map_lp, coords = ht_map_coords, dims = ['pixel', 'line'])
+    window_line = xr.DataArray(swot.sin2_window_func(np.shape(ht_map_2d)[1]), dims=['line'], coords={'line': ht_map_xr['line']})
+    spec_ht_map = swot.mean_power_spectrum(ht_map_xr, window_line, 'line', ['pixel'])
+    bal_k = spec_ht_map.freq_line[int(karin.track_length/2):]*1e3 
+    spec_ht_map = spec_ht_map[int(karin.track_length/2):]
 
     # --- Plotting ---
     fig, axs = plt.subplots(1, 1, figsize=(6, 5), dpi=150, constrained_layout=True)
@@ -628,11 +644,11 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
                   label=r'$A_b$=%5.1f, $\lambda_b$=%5.1f, $S_b$=%5.1f' %
                   (poptcwg_karin_params[0], poptcwg_karin_params[1]*1e-3, poptcwg_karin_params[2]))
     axs.loglog(k_km, (spunbalanced + spbalanced), '--', label='Model (sum)')
-    axs.loglog(k_km, spec_ht_map, '-', lw=2, label='Extracted Balanced Flow')
+    axs.loglog(bal_k, spec_ht_map, '-', lw=2, label='Extracted Balanced Flow')
     axs.set_xlabel('wavenumber (cpkm)')
     axs.set_ylabel('PSD (m$^2$ cpm$^{-1}$)')
-    axs.set_xlim(1e-3, 3e-1)
-    axs.set_ylim(1e-3, 1e5)
+    axs.set_xlim(5e-3, 3e-1)
+    axs.set_ylim(1e-4, 1e3)
     axs.legend(loc='lower left', frameon=False, fontsize=9)
 
     # save
@@ -643,11 +659,26 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
 
 # -------------------------- RUN ---------------------------
 if __name__ == "__main__":
-    n_frames = karin.ssha.shape[0]
+    n_realizations = int(getattr(karin_NA.ssha, "shape", (0,))[0])
+
+    # length across all time-like arrays (include sim realizations!)
+    n_frames = min(
+        len(shared_cycles),
+        getattr(karin.ssha, "shape", (0,))[0],
+        getattr(nadir.ssh,  "shape", (0,))[0],
+        n_realizations,                       
+    )
+
+    # only keep frames that actually have finite obs
+    candidate_idx = [
+        i for i in range(n_frames)
+        if np.isfinite(karin.ssha[i]).any() and np.isfinite(nadir.ssh[i]).any()
+    ]
 
     results = Parallel(n_jobs=N_JOBS, backend=BACKEND)(
-        delayed(process_frame)(idx) for idx in range(n_frames)  # test run
+        delayed(process_frame)(idx) for idx in candidate_idx
     )
+    processed_indices = [r["idx"] for r in results if r is not None]
 
 # ----------------- write a NetCDF output -----------------
 try:
@@ -668,12 +699,25 @@ try:
     # returns array floats for data output
     def _f(x): return float(np.asarray(x))
 
-    # ---- gather balanced fields (SWOT and SYN) saved per-frame ----
-    ht_swot_stack = np.empty((T, nyt, nxt), dtype="f4")
-    ht_syn_stack  = np.empty((T, nyt, nxt), dtype="f4")
-    for i, idx in enumerate(processed_indices):
+    ok = []
+    missing = []
+    for idx in processed_indices:
         p_swot = os.path.join(FIELDS_DIR, f"SWOT_P{pass_number:03d}_C{shared_cycles[idx]:03d}_{idx:03d}.npy")
         p_syn  = os.path.join(FIELDS_DIR, f"SYN_P{pass_number:03d}_C{shared_cycles[idx]:03d}_{idx:03d}.npy")
+        if os.path.exists(p_swot) and os.path.exists(p_syn):
+            ok.append((idx, p_swot, p_syn))
+        else:
+            missing.append(idx)
+
+    if not ok:
+        raise RuntimeError("No frame files found; nothing to stack.")
+
+    processed_indices = [idx for (idx, _, _) in ok]
+    T = len(processed_indices)
+
+    ht_swot_stack = np.empty((T, nyt, nxt), dtype="f4")
+    ht_syn_stack  = np.empty((T, nyt, nxt), dtype="f4")
+    for i, (idx, p_swot, p_syn) in enumerate(ok):
         ht_swot_stack[i] = np.load(p_swot)
         ht_syn_stack[i]  = np.load(p_syn)
 
@@ -740,7 +784,7 @@ try:
                 "long_name": "Simulation longitude along SWOT pass",
                 "units": "degrees_east"
             }),
-            "sim_pass_lat": (["box_y", "box_x"], karin.lon_full, {
+            "sim_pass_lat": (["box_y", "box_x"], karin.lat_full, {
                 "long_name": "Simulation latitudes along SWOT Pass",
                 "units": "degrees_north"
             }),
@@ -757,7 +801,7 @@ try:
                 "long_name": "Simulation longitude on KaRIn grid",
                 "units": "degrees_east"
             }),
-            "sim_karin_lat": (["sim_y", "sim_x"], karin_NA.lon[sample_index], {
+            "sim_karin_lat": (["sim_y", "sim_x"], karin_NA.lat[sample_index], {
                 "long_name": "Simulation latitude on KaRIn grid",
                 "units": "degrees_north"
             }),
