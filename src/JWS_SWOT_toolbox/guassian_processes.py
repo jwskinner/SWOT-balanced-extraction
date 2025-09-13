@@ -20,7 +20,7 @@ def cov(s, n, L):
     print(f"Variance from covariance: {C_r[0]:8.6f}")
     return scipy.interpolate.interp1d(r, C_r, kind='linear', bounds_error=False, fill_value="extrapolate")
 
-def make_karin_points(karin):
+def make_karin_points(karin, unit):
     nx = karin.track_length
     ny = 2 * karin.swath_width
     gap = karin.middle_width
@@ -32,9 +32,12 @@ def make_karin_points(karin):
 
     yk_1d = np.concatenate((yk_1d_upper, yk_1d_lower))
     Xk, Yk = np.meshgrid(xk_1d, yk_1d)
-    return Xk.flatten(), Yk.flatten()
+    if unit =='km':
+        return Xk.flatten()*1e-3, Yk.flatten()*1e-3
+    else: 
+        return Xk.flatten(), Yk.flatten()
 
-def make_nadir_points(karin, nadir, offset=0):
+def make_nadir_points(karin, nadir, unit, offset=0):
     nn = nadir.track_length
     ny = 2*karin.swath_width
     delta_k = karin.dx
@@ -43,8 +46,10 @@ def make_nadir_points(karin, nadir, offset=0):
 
     xn = (np.arange(0.5, nn, 1)) * delta_n + offset
     yn = (ny // 2 + gap / 2) * delta_k * np.ones(nn)
-
-    return xn, yn
+    if unit=='km':
+        return xn*1e-3, yn*1e-3
+    else:
+        return xn, yn
 
 def make_karin_points_from_data(karin, index): # Converts karin lats, lons into m grid
     lons = karin.lon[index, :, :]
@@ -241,7 +246,7 @@ def generate_synthetic_realizations(swot, F, Fk, sigma_noise, nx, ny, nn, n_real
             np.array(etas_k, dtype=object), 
             np.array(etas_n, dtype=object))
 
-def make_target_grid(karin, extend=False, dx=None, dy=None):
+def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
 
     # Use observed x/y extent from the data class 
     x_min = np.nanmin(karin.x_grid)
@@ -264,7 +269,10 @@ def make_target_grid(karin, extend=False, dx=None, dy=None):
     x_target = np.arange(x_min, x_max + dx, dx)
     y_target = np.arange(y_min, y_max + dy, dy)
 
-    # 2D mesh
+    if unit == 'km':
+        x_target *= 1e-3
+        y_target *= 1e-3
+        
     Xt, Yt = np.meshgrid(x_target, y_target)
 
     return Xt.flatten(), Yt.flatten(), len(x_target), len(y_target), x_target, y_target

@@ -157,9 +157,9 @@ def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir,
                                figsize=(8, 4), dpi=120):
     
     # Get the one-sided spectra
-    k_karin = karin.wavenumbers[int(karin.track_length/2):]  # units [1/m]
+    k_karin = karin.wavenumbers_cpkm[int(karin.track_length/2):]  # units [1/m]
     karin_spec_sample_mean = karin.spec_alongtrack_av[int(karin.track_length/2):]
-    k_nadir = nadir.wavenumbers[int(nadir.track_length/2):]  # units [1/m]
+    k_nadir = nadir.wavenumbers_cpkm[int(nadir.track_length/2):]  # units [1/m]
     nadir_spec_sample_mean = nadir.spec_alongtrack_av[int(nadir.track_length/2):]
     
     # Put the wavenumbers through the models to get the functional form
@@ -171,31 +171,31 @@ def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir,
     fig, axs = plt.subplots(1, 2, figsize=figsize, dpi=dpi, constrained_layout=True)
     
     # ----- Panel 1: KaRIn -----
-    k_km = k_karin * 1e3  # wavenumbers in cycles/km
-    axs[0].loglog(k_km[1:], karin_spec_sample_mean[1:], 'o', label='KaRIn SSHA')
-    axs[0].loglog(k_km[1:], spunbalanced[1:], 
+    k_km = k_karin # wavenumbers in cycles/km
+    axs[0].loglog(k_km[1:], 100 * karin_spec_sample_mean[1:], 'o', label='KaRIn SSHA')
+    axs[0].loglog(k_km[1:], 100 * spunbalanced[1:], 
                   label=r'$A_n$=%5.1f, $\lambda_n$=%5.1f, $S_n$=%5.1f' % 
-                  (poptcwg_karin[3], 100, poptcwg_karin[5]))
-    axs[0].loglog(k_km[1:], spbalanced, 
+                  (100 * poptcwg_karin[3], 100, poptcwg_karin[5]))
+    axs[0].loglog(k_km[1:], 100 * spbalanced, 
                   label=r'$A_b$=%5.1f, $\lambda_b$=%5.1f, $S_b$=%5.1f' % 
-                  (poptcwg_karin[0], poptcwg_karin[1]*1e-3, poptcwg_karin[2]))
-    axs[0].loglog(k_km[1:], (spunbalanced[1:] + spbalanced), '--', label='Model (sum)')
+                  (100 * poptcwg_karin[0], poptcwg_karin[1], poptcwg_karin[2]))
+    axs[0].loglog(k_km[1:], 100 * (spunbalanced[1:] + spbalanced), '--', label='Model (sum)')
     axs[0].set_xlabel('wavenumber (cpkm)')
-    axs[0].set_ylabel('PSD (m$^2$ cpm$^{-1}$)')
-    axs[0].set_xlim(1e-3, 3e-1)
-    axs[0].set_ylim(1e-3, 1e4)
+    axs[0].set_ylabel('PSD (cm$^2$ / cpkm)')
+    # axs[0].set_xlim(1e-3, 3e-1)
+    axs[0].set_ylim(1e-4, 1e3)
     axs[0].set_title('KaRIn')
     axs[0].legend(loc='lower left', frameon=False, fontsize=9)
     
     # ----- Panel 2: Nadir -----
-    axs[1].loglog(k_nadir[1:]*1e3, nadir_spec_sample_mean[1:], 'o', label='Nadir SSHA')
-    axs[1].loglog(k_nadir*1e3, spnoise_nadir, label=r'$N$=%5.1f' % poptcwg_nadir[0])
-    axs[1].loglog(k_karin[1:]*1e3, spbalanced, '-', label=r'KaRIn balanced model')
-    axs[1].loglog(k_karin[1:]*1e3, (spbalanced + spnoise_nadir[:1]), '--', label='Model (sum)')
+    axs[1].loglog(k_nadir[1:], 100 * nadir_spec_sample_mean[1:], 'o', label='Nadir SSHA')
+    axs[1].loglog(k_nadir, 100 * spnoise_nadir, label=r'$N$=%5.1f' % (poptcwg_nadir[0] * 100.0))
+    axs[1].loglog(k_karin[1:], 100 * spbalanced, '-', label=r'KaRIn balanced model')
+    axs[1].loglog(k_karin[1:], 100 * (spbalanced + spnoise_nadir[:1]), '--', label='Model (sum)')
     axs[1].set_xlabel('wavenumber (cpkm)')
-    axs[1].set_ylabel('PSD (m$^2$ cpm$^{-1}$)')
-    axs[1].set_xlim(1e-3, 3e-1)
-    axs[1].set_ylim(1e-3, 1e4)
+    axs[1].set_ylabel('PSD (cm$^2$ / cpkm)')
+    # axs[1].set_xlim(1e-3, 3e-1)
+    axs[1].set_ylim(1e-4, 1e4)
     axs[1].set_title('Nadir')
     axs[1].legend(loc='lower left', frameon=False, fontsize=9)
     

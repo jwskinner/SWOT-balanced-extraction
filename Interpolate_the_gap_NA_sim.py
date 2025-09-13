@@ -5,7 +5,7 @@ Balanced reconstruction tests on the NA simulation data. The functions in this s
 
 """
 import os
-os.environ["NUMEXPR_MAX_THREADS"] = "1"  
+os.environ["NUMEXPR_MAX_THREADS"] = "4"  
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 import psutil, time
 import argparse
@@ -29,12 +29,12 @@ import cartopy.crs as ccrs
 
 # ------------------------- CONFIG -------------------------
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'  # CAL/VAL data root
-#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'  # CAL/VAL data root
+data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'  # CAL/VAL data root
 NA_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots"
 
 pass_number = 9
-lat_min = 28
-lat_max = 29
+lat_min = 25
+lat_max = 30
 
 # plotting
 SSH_VMIN, SSH_VMAX = -0.20, 0.20     # meters
@@ -42,7 +42,7 @@ VORT_VMIN, VORT_VMAX = -1.0, 1.0     # zeta/f color limits
 PNG_DPI = 200
 
 # parallel
-N_JOBS = 1
+N_JOBS = 4
 BACKEND = "loky"
 
 # ---------------------- PASS COMMAND LINE ARGS ----------------------
@@ -109,6 +109,7 @@ _, _, matched_dates = swot.pick_range_from_karin_times(
 # 2) interpolate each sim day onto the KaRIn and Nadir grids
 #  Match the simulation dates with the SWOT dates
 NA_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots"
+NA_butter_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots_bfiltered"
 
 # -- choose sim dates for KaRIn times
 _, _, matched_dates = swot.pick_range_from_karin_times(
@@ -156,7 +157,7 @@ print(f"Loaded NA sim data for {len(used_dates)} dates")
 swot.set_plot_style()
 
 vmin, vmax = -0.5, 0.5
-ylims = (1e-5, 1e5)
+ylims = (1e-7, 1e2)
 cmap = cmocean.cm.balance
 
 fig = plt.figure(figsize=(18, 6), dpi=150)
@@ -232,7 +233,7 @@ np.save(os.path.join(ROOT_DIR, "SWOT_fit_params.npy"), fit_params)
 
 # ───── Generate Synthetic Fields from the SWOT Models ─────
 A_b, lam_b, s_b = poptcwg_karin[0], poptcwg_karin[1], poptcwg_karin[2]
-A_n, s_n, lam_n = poptcwg_karin[3], poptcwg_karin[5], 1e5  # lam_n fixed at 100 km
+A_n, s_n, lam_n = poptcwg_karin[3], poptcwg_karin[5], 100  # lam_n fixed at 100 km
 N_n = poptcwg_nadir[0]
 
 # --- Grid and Spacing ---
@@ -241,17 +242,18 @@ nn = nadir.track_length
 dx, dy, dn = karin.dx, karin.dy, nadir.dy
 
 # --- Covariance Functions ---
+scale = 1 # km
 S_bal = lambda k: A_b / (1 + (lam_b * k)**s_b)
-sigma_taper = 2 * np.pi * 1e3 / np.sqrt(2 * np.log(2))
+sigma_taper = 2 * np.pi * scale / np.sqrt(2 * np.log(2))
 S_unb = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n/2) * np.exp(-0.5 * (sigma_taper**2) * k**2)
-sigma_noise = np.sqrt(N_n / (2 * dn))
+sigma_noise = np.sqrt(N_n / (2 * dn*1e-3))
 
-c_bal = swot.cov(S_bal, 5000000, 10000e3)
-c_unb = swot.cov(S_unb, 5000, 10000e3)
+c_bal = swot.cov(S_bal, 5000000, 10000)
+c_unb = swot.cov(S_unb, 5000, 10000)
 
 # --- Observation Points ---
-xk, yk = karin.x_obs_grid.flatten(), karin.y_obs_grid.flatten()
-xn, yn = nadir.x_grid.flatten(), nadir.y_grid.flatten()
+xk, yk = karin.x_obs_grid.flatten()*1e-3, karin.y_obs_grid.flatten()*1e-3
+xn, yn = nadir.x_grid.flatten()*1e-3, nadir.y_grid.flatten()*1e-3
 xobs = np.concatenate((xk, xn))
 yobs = np.concatenate((yk, yn))
 
@@ -300,7 +302,7 @@ karin_NA.ssh_noisy = ssh_noisy # save the generated noisy fields to our NA simul
 nadir_NA.ssh_noisy = ssh_nadir_noisy
 
 # --------------------- FIT SPECTRAL MODEL TO SYNTHETIC SWOT DATA ----------------------
-kt_NA_coords    = [np.arange(n_realizations), karin.y_coord, karin.x_coord]
+kt_NA_coords    = [np.arange(n_realizations), karin.y_coord_km, karin.x_coord_km]
 ssh_noisy_xr = xr.DataArray(ssh_noisy, coords = kt_NA_coords, dims = ['sample', 'line', 'pixel'])
 spec_ssh_noisy = swot.mean_power_spectrum(ssh_noisy_xr, karin.window, 'line', ['sample', 'pixel'])
 
@@ -321,14 +323,14 @@ def process_frame(idx: int):
     mask_n = np.isfinite(nadir.ssh[idx]).ravel()     # 1D
 
     # --- KaRIn (2D) valid
-    hkk = karin.ssha[idx][mask_k].ravel()
-    xkk = karin.x_grid[mask_k].ravel()
-    ykk = karin.y_grid[mask_k].ravel()
+    hkk = karin.ssha[idx][mask_k].ravel() 
+    xkk = karin.x_grid[mask_k].ravel() * 1.0e-3 # km
+    ykk = karin.y_grid[mask_k].ravel() * 1.0e-3  # km
 
     # --- Nadir (1D) valid
     hn = np.ravel(nadir.ssh[idx])
-    xn = np.ravel(nadir.x_grid)
-    yn = np.ravel(nadir.y_grid)
+    xn = np.ravel(nadir.x_grid) * 1.0e-3  # km
+    yn = np.ravel(nadir.y_grid) * 1.0e-3  # km
 
     hnn = hn[mask_n]
     xnn = xn[mask_n]
@@ -355,7 +357,7 @@ def process_frame(idx: int):
     N_obs = block_diag(Nk_obs, Nn_obs)
 
     # --- Target grid + estimate
-    ht_vec = swot.estimate_signal_on_target(c_bal, xt, yt, xobs, yobs, C_obs, N_obs, h_obs)
+    ht_vec = swot.estimate_signal_on_target(c_bal, xt_km, yt_km, xobs, yobs, C_obs, N_obs, h_obs)
 
     # --- SAVE FIELDS AND PLOTS 
     out_npy = os.path.join(FIELDS_DIR, f"SWOT_P{pass_number:03d}_C{shared_cycles[idx]:03d}_{idx:03d}.npy")
@@ -402,13 +404,13 @@ def process_frame(idx: int):
 
     # --- KaRIn (2D) valid
     hkk = karin_NA.ssh_noisy[idx][mask_k].ravel()
-    xkk = karin_NA.x_grid[mask_k].ravel()
-    ykk = karin_NA.y_grid[mask_k].ravel()
+    xkk = karin_NA.x_grid[mask_k].ravel() * 1.0e-3 #km
+    ykk = karin_NA.y_grid[mask_k].ravel() * 1.0e-3 #km
 
     # --- Nadir (1D) valid
     hn = np.ravel(nadir_NA.ssh_noisy[idx])
-    xn = np.ravel(nadir_NA.x_grid)
-    yn = np.ravel(nadir_NA.y_grid)
+    xn = np.ravel(nadir_NA.x_grid) * 1.0e-3 #km
+    yn = np.ravel(nadir_NA.y_grid) * 1.0e-3 #km
 
     hnn = hn[mask_n]
     xnn = xn[mask_n]
@@ -430,7 +432,7 @@ def process_frame(idx: int):
     N_obs = block_diag(Nk_obs, Nn_obs)
 
     # --- Target grid + estimate
-    ht_syn = swot.estimate_signal_on_target(c_bal, xt, yt, xobs, yobs, C_obs, N_obs, h_obs)
+    ht_syn = swot.estimate_signal_on_target(c_bal, xt_km, yt_km, xobs, yobs, C_obs, N_obs, h_obs)
 
     # --- SAVE FIELDS AND PLOTS 
     out_npy = os.path.join(FIELDS_DIR, f"SYN_P{pass_number:03d}_C{shared_cycles[idx]:03d}_{idx:03d}.npy")
@@ -489,8 +491,8 @@ def plot_frame(ht, index, karin, nadir, shared_cycles, pass_number, nyt, nxt, ou
     vmin, vmax = -0.20, 0.20
 
     # Axes coordinates in km (x = along-track, y = across-track)
-    x_km = np.linspace(0, nyt * karin.dx * 1e-3, ht_map.shape[1])  # columns
-    y_km = np.linspace(0, nxt * karin.dy * 1e-3, ht_map.shape[0])  # rows
+    x_km = np.linspace(0, nyt * karin.dx_km, ht_map.shape[1])  # columns
+    y_km = np.linspace(0, nxt * karin.dy_km, ht_map.shape[0])  # rows
     XX, YY = np.meshgrid(x_km, y_km)
 
     # ── figure with adjusted size for equal aspect
@@ -529,13 +531,13 @@ def plot_frame(ht, index, karin, nadir, shared_cycles, pass_number, nyt, nxt, ou
     # ── Panel 0: Observed SSH (scatter)
     sc1 = axes[0].scatter(
         y_k_valid * 1e-3, x_k_valid * 1e-3,  # across (y) vs along (x)
-        c=ssh_k_valid, s=5, cmap='Spectral',
+        c=ssh_k_valid, s=5, cmap='cmo.balance_r',
         vmin=vmin, vmax=vmax, edgecolor="none"
     )
     # overlay nadir with same scale
     axes[0].scatter(
         y_n_valid * 1e-3, x_n_valid * 1e-3,
-        c=ssh_n_valid, s=5, cmap='Spectral',
+        c=ssh_n_valid, s=5, cmap='cmo.balance_r',
         vmin=vmin, vmax=vmax, edgecolor="none"
     )
     axes[0].set_title("Observed SSH")
@@ -569,7 +571,7 @@ def plot_frame(ht, index, karin, nadir, shared_cycles, pass_number, nyt, nxt, ou
     vort_levels = np.linspace(vort_vmin, vort_vmax, 100)
 
     # ── Panel 1: Extracted Balanced SSH (contourf)
-    cf0 = axes[1].contourf(XX, YY, ht_map, levels=ssh_levels, cmap='Spectral', extend='both')
+    cf0 = axes[1].contourf(XX, YY, ht_map, levels=ssh_levels, cmap='cmo.balance_r', extend='both')
     axes[1].set_title("Extracted Balanced SSH")
     axes[1].set_ylabel("across-track (km)")
     axes[1].set_aspect("equal")
@@ -588,7 +590,7 @@ def plot_frame(ht, index, karin, nadir, shared_cycles, pass_number, nyt, nxt, ou
     cbar2.set_label(r'$|\nabla \mathrm{SSH}|$')
 
     # ── Panel 3: Geostrophic Vorticity (contourf) — three ticks: min, 0, max
-    cf2 = axes[3].contourf(XX, YY, geo_vort, levels=vort_levels, cmap=cmocean.cm.balance, extend='both')
+    cf2 = axes[3].contourf(XX, YY, geo_vort, levels=vort_levels, cmap='cmo.curl', extend='both')
     axes[3].set_title("Geostrophic Vorticity")
     axes[3].set_xlabel("along-track distance (km)")
     axes[3].set_ylabel("across-track (km)")
@@ -610,7 +612,7 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
     ht_map_2d = ht_map.reshape(nyt, nxt).T
     
     # Extract KaRIn wavenumbers and sample mean spectrum
-    k_karin = karin_obj.wavenumbers[int(karin_obj.track_length/2):]
+    k_karin = karin_obj.wavenumbers_cpkm[int(karin_obj.track_length/2):]
     karin_spec_sample_mean = karin_obj.spec_alongtrack_av[int(karin_obj.track_length/2):]
 
     # Ensure consistent slicing for model inputs (skipping the first wavenumber)
@@ -623,32 +625,32 @@ def plot_spectrum_comparison(karin_obj, swot_obj, poptcwg_karin_params, ntx, nyt
     ht_map_lp = ht_map_2d
     
     ht_map_coords = { 
-    'pixel': np.arange(0.5, np.shape(ht_map_2d)[0], 1.0) * karin.dy, 
-    'line': np.arange(0.5, np.shape(ht_map_2d)[1], 1.0) * karin.dx
+    'pixel': np.arange(0.5, np.shape(ht_map_2d)[0], 1.0) * karin.dy_km, 
+    'line': np.arange(0.5, np.shape(ht_map_2d)[1], 1.0) * karin.dx_km
     }
 
     ht_map_xr = xr.DataArray(ht_map_lp, coords = ht_map_coords, dims = ['pixel', 'line'])
     window_line = xr.DataArray(swot.sin2_window_func(np.shape(ht_map_2d)[1]), dims=['line'], coords={'line': ht_map_xr['line']})
     spec_ht_map = swot.mean_power_spectrum(ht_map_xr, window_line, 'line', ['pixel'])
-    bal_k = spec_ht_map.freq_line[int(karin.track_length/2):]*1e3 
+    bal_k = spec_ht_map.freq_line[int(karin.track_length/2):] 
     spec_ht_map = spec_ht_map[int(karin.track_length/2):]
 
     # --- Plotting ---
     fig, axs = plt.subplots(1, 1, figsize=(6, 5), dpi=150, constrained_layout=True)
-    k_km = k_karin_sliced * 1e3
+    k_km = k_karin_sliced
     axs.loglog(k_km, karin_spec_sample_mean[1:], 'o', label='KaRIn SSHA')
     axs.loglog(k_km, spunbalanced,
                   label=r'$A_n$=%5.1f, $\lambda_n$=%5.1f, $S_n$=%5.1f' %
                   (poptcwg_karin_params[3], 100, poptcwg_karin_params[5]))
     axs.loglog(k_km, spbalanced,
                   label=r'$A_b$=%5.1f, $\lambda_b$=%5.1f, $S_b$=%5.1f' %
-                  (poptcwg_karin_params[0], poptcwg_karin_params[1]*1e-3, poptcwg_karin_params[2]))
+                  (poptcwg_karin_params[0], poptcwg_karin_params[1], poptcwg_karin_params[2]))
     axs.loglog(k_km, (spunbalanced + spbalanced), '--', label='Model (sum)')
     axs.loglog(bal_k, spec_ht_map, '-', lw=2, label='Extracted Balanced Flow')
     axs.set_xlabel('wavenumber (cpkm)')
-    axs.set_ylabel('PSD (m$^2$ cpm$^{-1}$)')
-    axs.set_xlim(5e-3, 3e-1)
-    axs.set_ylim(1e-4, 1e3)
+    axs.set_ylabel('PSD (m$^2$ cpkm$^{-1}$)')
+    axs.set_xlim(1e-3, 3e-1)
+    axs.set_ylim(1e-8, 1e2)
     axs.legend(loc='lower left', frameon=False, fontsize=9)
 
     # save
@@ -674,6 +676,10 @@ if __name__ == "__main__":
         i for i in range(n_frames)
         if np.isfinite(karin.ssha[i]).any() and np.isfinite(nadir.ssh[i]).any()
     ]
+
+    # --- limit to a small test run ---
+    # TEST_LIMIT = 5
+    # candidate_idx = candidate_idx[:TEST_LIMIT]
 
     results = Parallel(n_jobs=N_JOBS, backend=BACKEND)(
         delayed(process_frame)(idx) for idx in candidate_idx

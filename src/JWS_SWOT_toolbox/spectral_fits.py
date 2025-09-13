@@ -24,10 +24,10 @@ def unbalanced_model_notaper(k, A_n, lam_n, s_n):
     sp = A_n / (1 + (lam_n * k)**2)**(s_n/2)
     return sp
 
-def unbalanced_model(k, A_n, lam_n, s_n, cutoff=1e3):
+def unbalanced_model(k, A_n, lam_n, s_n, cutoff=1e0):
     '''Model of unbalanced component with a taper at high wavenumbers'''
     sigma = 2 * np.pi * cutoff/np.sqrt(2*np.log(2))
-    lam_n = 1e5  # set to 100km because it is not well constrained 
+    lam_n = 1e2  # set to 100km because it is not well constrained 
     taper = np.exp(-sigma**2*k**2/2)
     sp = A_n / (1 + (lam_n * k)**2)**(s_n/2)
     return sp * taper
@@ -39,17 +39,17 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
     '''Fits the balanced/unbalanced models to the averaged power spectrum'''
 
     track_length = data.track_length 
-    k = data.wavenumbers[int(data.track_length/2):] # this is in units [1/m] 
+    k = data.wavenumbers_cpkm[int(data.track_length/2):] # this is in units [1/km] 
     spectrum_onesided = spectrum[int(track_length // 2):]
     weights = np.sqrt(k[1:])
 
     # Defaults for initial guess and bounds
     if initial_guess is None:
-        initial_guess = [2.5e3, 200e3, 4.6, 10.0, 100e3, 1.3]
+        initial_guess = [2.5e1, 200, 4.6, 10.0, 100, 1.3]
     
     if bounds is None:
-        lower_bounds = [0, 0, 0, 0, 1.0e5, 0]
-        upper_bounds = [1e9, 1e9, 10, 1e9, 1.0001e5, 10]
+        lower_bounds = [0.0,   10.0,   0.5,  0.0,   100.0,    0.5]
+        upper_bounds = [1e9, 300.0,  10.0, 1e9, 100.01,   3.0]
         bounds = (lower_bounds, upper_bounds)
 
     # Fit the model (excluding zero)
@@ -76,7 +76,7 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
 def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds=None):
     ''' Fit only the noise parameter N in the nadir model, with balanced parameters fixed from KaRIn fit. '''
 
-    k = data.wavenumbers[int(data.track_length/2):]
+    k = data.wavenumbers_cpkm[int(data.track_length/2):]
     spectrum = spectrum[int(data.track_length/2):]
     weights = np.sqrt(k[1:])
 

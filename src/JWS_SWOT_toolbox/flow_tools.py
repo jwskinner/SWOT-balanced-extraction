@@ -237,6 +237,45 @@ def compute_laplacian_5point(field, dx=2000, dy=2000):
 
     return lap
 
+def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_f=1e-12):
+ 
+    ssh = np.asarray(ssh, dtype=float)
+    M, N = ssh.shape
+
+    # latitude handling
+    lat = np.asarray(lat)
+    if lat.ndim == 0:               # scalar
+        lat_row = np.full(M, float(lat))
+    elif lat.ndim == 1 and lat.shape[0] == M:   # per-row
+        lat_row = lat
+    else:
+        raise ValueError(f"lat must be scalar or 1D of length {M}")
+
+    lat_rad = np.deg2rad(lat_row)
+    f = 2 * omega * np.sin(lat_rad)[:, None]  # shape (M,1)
+    f = np.where(np.abs(f) < eps_f, np.sign(f) * eps_f + eps_f, f)
+
+    # derivatives: centered differences
+    dssh_dx = np.zeros_like(ssh)
+    dssh_dx[:, 1:-1] = (ssh[:, 2:] - ssh[:, :-2]) / (2 * dx)
+    dssh_dx[:, 0] = (ssh[:, 1] - ssh[:, 0]) / dx
+    dssh_dx[:, -1] = (ssh[:, -1] - ssh[:, -2]) / dx
+
+    dssh_dy = np.zeros_like(ssh)
+    dssh_dy[1:-1, :] = (ssh[2:, :] - ssh[:-2, :]) / (2 * dy)
+    dssh_dy[0, :] = (ssh[1, :] - ssh[0, :]) / dy
+    dssh_dy[-1, :] = (ssh[-1, :] - ssh[-2, :]) / dy
+
+    # geostrophic velocities
+    u_geo = - (g / f) * dssh_dy   # zonal / across-track
+    v_geo =   (g / f) * dssh_dx   # meridional / along-track
+    speed = np.sqrt(u_geo**2 + v_geo**2)
+
+    return u_geo, v_geo, speed
+
+
+
+
 def compute_geostrophic_vorticity_5pt(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, R_e=6371e3):
     ssh = np.asarray(ssh)
     M, N = ssh.shape

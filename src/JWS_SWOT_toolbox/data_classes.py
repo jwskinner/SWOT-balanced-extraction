@@ -73,9 +73,11 @@ class KarinData:
 
         y_idx = np.arange(self.track_length) + 0.5 
         self.y_coord = self.dy * y_idx
+        self.y_coord_km = self.y_coord * 1e-3
 
         x_idx = np.arange(self.total_width) + 0.5 
         self.x_coord = self.dx * x_idx
+        self.x_coord_km = self.x_coord * 1e-3
 
         self.t_coord = np.arange(self.num_cycles)
         self.x_grid, self.y_grid = np.meshgrid(self.x_coord, self.y_coord)
@@ -92,8 +94,8 @@ class KarinData:
         
         # 1. window and coordinates
         self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['line'])
-        k_coords = [self.y_coord, self.x_coord] # do spectra in cpkm
-        kt_coords = [self.t_coord, self.y_coord, self.x_coord] # do spectra in cpkm
+        k_coords = [self.y_coord_km, self.x_coord_km] # do spectra in cpkm
+        kt_coords = [self.t_coord, self.y_coord_km, self.x_coord_km] # do spectra in cpkm
 
         # 2. Create xarrays for analysis
         karin_ssh = xr.DataArray(self.ssh, coords=kt_coords, dims=['sample', 'line', 'pixel'])
@@ -124,8 +126,8 @@ class KarinData:
 
         # 5. Store wavenumbers in various useful forms 
         self.wavenumbers_ord = self.spec_alongtrack_ins.freq_line        # ordinary wavenumbers in cycles/m
-        self.wavenumbers = self.wavenumbers_ord                          # we default to using the ordinary wavenumbers
-        self.wavenumbers_cpkm = self.wavenumbers_ord * 1e3               # cycles/km
+        self.wavenumbers_m = self.wavenumbers_ord * 1e3                  # we default to using the ordinary wavenumbers
+        self.wavenumbers_cpkm = self.wavenumbers_ord                     # cycles/km
         self.wavenumbers_ang = self.wavenumbers_cpkm * 2 * np.pi         # angular wavenumbers in rads/m
         self.wavenumbers_length = 1 / self.wavenumbers_ord               # lengths in km
 
@@ -159,8 +161,11 @@ class NadirData:
 
         y_idx = np.arange(self.track_length) + 0.5
         self.y_coord = self.dy * y_idx
+        self.y_coord_km = self.y_coord * 1e-3
+        
         center_x_position = (self.karin.total_width * self.karin.dx) / 2.0
         self.x_coord = np.array([center_x_position])
+        self.x_coord_km = self.x_coord * 1e-3
         self.x_grid, self.y_grid = np.meshgrid(self.x_coord, self.y_coord)
 
         self.t_coord = np.arange(self.num_cycles)
@@ -170,7 +175,7 @@ class NadirData:
         print("Computing Nadir spectra...")
         # 1. window and coordinates
         self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['nadir_line'])
-        nt_coords = [self.t_coord, self.y_coord]
+        nt_coords = [self.t_coord, self.y_coord_km]
         
         # 2. Create xarrays for analysis
         nadir_ssh = xr.DataArray(self.ssh, coords=nt_coords, dims=['sample', 'nadir_line'])
@@ -186,8 +191,8 @@ class NadirData:
         
         # 5. Store wavenumbers in various useful forms 
         self.wavenumbers_ord = self.spec_alongtrack_ins.freq_nadir_line  # ordinary wavenumbers in cycles/m
-        self.wavenumbers = self.wavenumbers_ord                          # we default to using the ordinary wavenumbers
-        self.wavenumbers_cpkm = self.wavenumbers_ord * 1e3               # cycles/km
+        self.wavenumbers_m = self.wavenumbers_ord * 1e3                  # ordinary wavenumbers
+        self.wavenumbers_cpkm = self.wavenumbers_ord                     # cycles/km
         self.wavenumbers_ang = self.wavenumbers_cpkm * 2 * np.pi         # angular wavenumbers in rads/m
         self.wavenumbers_length = 1 / self.wavenumbers_ord               # lengths in km
         
