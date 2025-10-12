@@ -20,11 +20,37 @@ def matern_spec(k, gm, lam_u):# for unbalanced part
 
 def unbalanced_model_notaper(k, A_n, lam_n, s_n):
     '''Model of unbalanced component without a Guassian taper at high wavenumbers'''
-    lam_n = 1e5 # set to 100km because it is not well constrained
+    lam_n = 1e2 # set to 100km because it is not well constrained
     sp = A_n / (1 + (lam_n * k)**2)**(s_n/2)
     return sp
 
-def unbalanced_model(k, A_n, lam_n, s_n, cutoff=1e0):
+def unbalanced_model_aliased(k, A_n, lam_n=None, s_n=3.0, cutoff=1.0, k_N=0.25, n_max=2):
+    """
+    Aliased unbalanced model:
+      P_alias(k) = sum_{n=0}^{n_max} P( | n*k_N - k | ) * taper(|n*k_N - k|)
+    where P(q) = A_n / (1 + (lam_n * q)**2)^(s_n/2)
+    """
+
+    k = np.asarray(k)
+    if lam_n is None:
+        lam_n = 1e2  # keep original fallback
+
+    # Gaussian taper parameter (same form as original function)
+    sigma = 2 * np.pi * cutoff / np.sqrt(2 * np.log(2))
+    def taper(q):
+        return np.exp(-sigma**2 * q**2 / 2)
+
+    total = np.zeros_like(k, dtype=float)
+
+    for n in range(0, n_max + 1):
+        q = np.abs(2 * n * k_N - k)  # distance from aliased center
+        Pq = A_n / (1.0 + (lam_n * q)**2)**(s_n / 2.0)
+        total += Pq * taper(q)
+
+    return total
+
+
+def unbalanced_model(k, A_n, lam_n, s_n, cutoff=0.5e0):
     '''Model of unbalanced component with a taper at high wavenumbers'''
     sigma = 2 * np.pi * cutoff/np.sqrt(2*np.log(2))
     lam_n = 1e2  # set to 100km because it is not well constrained 
@@ -33,7 +59,8 @@ def unbalanced_model(k, A_n, lam_n, s_n, cutoff=1e0):
     return sp * taper
 
 def karin_model(k, A_b, lam_b, s_param, A_n, lam_n, s_n):
-    return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model(k, A_n, lam_n, s_n))
+    #return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model(k, A_n, lam_n, s_n))
+    return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model_aliased(k, A_n, lam_n, s_n))
 
 def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose = True):
     '''Fits the balanced/unbalanced models to the averaged power spectrum'''
@@ -48,7 +75,7 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
         initial_guess = [2.5e1, 200, 4.6, 10.0, 100, 1.3]
     
     if bounds is None:
-        lower_bounds = [0.0,   10.0,   0.5,  0.0,   100.0,    0.5]
+        lower_bounds = [0.0,   10.0,   0.5,  0.0,   100.0,    1.]
         upper_bounds = [1e9, 300.0,  10.0, 1e9, 100.01,   3.0]
         bounds = (lower_bounds, upper_bounds)
 

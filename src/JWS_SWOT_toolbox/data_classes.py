@@ -97,20 +97,20 @@ class KarinData:
         k_coords = [self.y_coord_km, self.x_coord_km] # do spectra in cpkm
         kt_coords = [self.t_coord, self.y_coord_km, self.x_coord_km] # do spectra in cpkm
 
-        # 2. Create xarrays for analysis
-        karin_ssh = xr.DataArray(self.ssh, coords=kt_coords, dims=['sample', 'line', 'pixel'])
-        karin_ssha = xr.DataArray(self.ssha, coords=kt_coords, dims=['sample', 'line', 'pixel'])
+        # 2. Create xarrays for analysis, we do the spectra in cm so the output is cm/cpkm
+        karin_ssh = xr.DataArray(self.ssh*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
+        karin_ssha = xr.DataArray(self.ssha*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
         
         if hasattr(self, 'ssh_mean') and self.ssh_mean is not None:
-            karin_mean = xr.DataArray(self.ssh_mean, coords=k_coords, dims=['line', 'pixel'])
+            karin_mean = xr.DataArray(self.ssh_mean*100, coords=k_coords, dims=['line', 'pixel'])
             self.spec_tmean = swot.mean_power_spectrum(karin_mean, self.window, 'line', ['pixel'])
         
         if hasattr(self, 'ssh_mean_highpass') and self.ssh_mean_highpass is not None:
-            karin_mean_filtered = xr.DataArray(self.ssha_mean_highpass, coords=k_coords, dims=['line', 'pixel'])
+            karin_mean_filtered = xr.DataArray(self.ssha_mean_highpass*100, coords=k_coords, dims=['line', 'pixel'])
             self.spec_filt_tmean = swot.mean_power_spectrum(karin_mean_filtered, self.window, 'line', ['pixel'])
         
         if hasattr(self, 'tide') and self.tide is not None:
-            karin_tide = xr.DataArray(self.tide, coords=kt_coords, dims=['sample', 'line', 'pixel'])
+            karin_tide = xr.DataArray(self.tide*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
             self.spec_tide = swot.mean_power_spectrum(karin_tide, self.window, 'line', ['sample', 'pixel'])
         
         # 3. Remove spatial mean for anomaly spectra
@@ -177,16 +177,20 @@ class NadirData:
         self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['nadir_line'])
         nt_coords = [self.t_coord, self.y_coord_km]
         
-        # 2. Create xarrays for analysis
-        nadir_ssh = xr.DataArray(self.ssh, coords=nt_coords, dims=['sample', 'nadir_line'])
+        # 2. Create xarrays for analysis in cm^2/cpkm
+        nadir_ssh = xr.DataArray(self.ssh * 100, coords=nt_coords, dims=['sample', 'nadir_line'])
+        nadir_ssha = xr.DataArray(self.ssha * 100, coords=nt_coords, dims=['sample', 'nadir_line'])
         
         # 3. Remove spatial mean for anomaly spectra
         nadir_spatial_mean = swot.spatial_mean(nadir_ssh, ['nadir_line'])
         nadir_anomsp = nadir_ssh - nadir_spatial_mean
+        nadir_anomspa = nadir_ssha - nadir_spatial_mean
 
         # 4. Perform spectral analysis
         self.spec_ssh = swot.mean_power_spectrum(nadir_ssh, self.window, 'nadir_line', ['sample'])
+        self.spec_ssha = swot.mean_power_spectrum(nadir_ssha, self.window, 'nadir_line', ['sample'])
         self.spec_alongtrack_av = swot.mean_power_spectrum(nadir_anomsp, self.window, 'nadir_line', ['sample'])
+        self.spec_alongtrack_ava = swot.mean_power_spectrum(nadir_anomspa, self.window, 'nadir_line', ['sample'])
         self.spec_alongtrack_ins = swot.mean_power_spectrum(nadir_anomsp, self.window, 'nadir_line', [])
         
         # 5. Store wavenumbers in various useful forms 

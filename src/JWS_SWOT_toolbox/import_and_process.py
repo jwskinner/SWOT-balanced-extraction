@@ -134,14 +134,14 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
     for n, (filename, cycle) in enumerate(karin_files_with_numbers):
         try:
             with nc.Dataset(filename, 'r') as data:
-                # build the same along-track index 
+                # build the along-track index 
                 fp_latitude = data['latitude']
                 mid_col = fp_latitude.shape[1] // 2
                 lat_center = fp_latitude[:, mid_col]
                 indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
                 if indx.size == 0:
                     continue
-
+            
                 # --- mean time over those indices (NaNs ignored) ---
                 if 'time' in data.variables:
                     tvar_nc = data.variables['time']
@@ -150,12 +150,30 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                         tmean = float(np.nanmean(tvals))
                         time_cycle_num[n] = tmean
                         time_cycle_dt[n]  = cf_to_datetime64([tmean], tvar_nc)[0]
-
-                # ---- load fields (two swaths) ----
+            
+                # ---- pre-check quality for both swaths ----
+                drop_cycle = False
                 for side in [0, 1]:
                     i0 = 34 * side + 5
                     i1 = i0 + swath_width
+                    qual = data['ssha_karin_2_qual'][indx, i0:i1]
+                    total_pts = np.size(qual)
+                    bad_frac = np.sum(qual != 0) / total_pts if total_pts > 0 else 1.0
+                    if bad_frac > 0.20:
+                        drop_cycle = True # drop the entire cycle if theres too many bad qual data
+            
+                if drop_cycle:
+                    # record both strips as bad
+                    bad_strips_quality.append((cycle, 0))
+                    bad_strips_quality.append((cycle, 1))
+                    print(f"KaRIn Cycle {cycle} dropped: >20% bad-quality points")
+                    continue   # skip this cycle entirely
 
+                # ---- process normally if not dropped ----
+                for side in [0, 1]:
+                    i0 = 34 * side + 5
+                    i1 = i0 + swath_width
+            
                     ssha = data['ssha_karin_2'][indx, i0:i1]
                     qual = data['ssha_karin_2_qual'][indx, i0:i1]
                     xcor = data['height_cor_xover'][indx, i0:i1]
@@ -172,7 +190,7 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                         if dropqual:
                             continue
 
-                    ssha_combined = ssha + xcor - tide
+                    ssha_combined = ssha + xcor + tide
                     ssha_masked   = np.where(qual != 0, np.nan, ssha_combined)
                     tide_masked   = np.where(qual != 0, np.nan, tide)
 
@@ -359,11 +377,18 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
                 continue
 
             tide = group['internal_tide_hret'][indxs]
-            ssha = group['ku']['ssha'][indxs] - tide
+            ssha = group['ku']['ssha'][indxs] + tide
 
-            if np.all(ssha.mask):
-                num_bad_cycles += 1
-                continue
+            # --- Implement the 20% rule for bad quality points ---
+            total_pts = ssha.size
+            if total_pts > 0:
+                num_bad_pts = np.sum(ssha.mask)
+                bad_frac = num_bad_pts / total_pts
+                if bad_frac > 0.20:
+                    # This print statement is optional but helpful for transparency
+                    print(f"Nadir Cycle {cycle} dropped: >20% bad-quality nadir points ({bad_frac:.2%}).")
+                    num_bad_cycles += 1
+                    continue
 
             num_good_cycles += 1
             n_valid = min(nadir.track_length, len(indxs))

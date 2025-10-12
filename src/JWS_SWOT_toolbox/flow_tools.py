@@ -1,147 +1,202 @@
 import numpy as np
+import JWS_SWOT_toolbox as swot
 
+
+def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_f=1e-12):
+    """
+    Computes geostrophic velocity using 4th-order finite differences for the SSH gradient.
+    
+    """
+    ssh = np.asarray(ssh, dtype=float)
+    M, N = ssh.shape
+
+    # Latitude handling
+    lat = np.asarray(lat)
+    if lat.ndim == 0:  # Scalar latitude
+        lat_row = np.full(M, float(lat))
+    elif lat.ndim == 1 and lat.shape[0] == M:  # Latitude array per row
+        lat_row = lat
+    else:
+        raise ValueError(f"lat must be scalar or 1D of length {M}")
+
+    # Coriolis parameter f, broadcast to the shape of the ssh field
+    lat_rad = np.deg2rad(lat_row)
+    f = 2 * omega * np.sin(lat_rad)[:, None]
+    
+    # Avoid division by zero at the equator
+    f = np.where(np.abs(f) < eps_f, np.sign(f) * eps_f + eps_f, f)
+
+    # Compute SSH gradients using 4th-order accurate stencils everywhere
+    dssh_dx, dssh_dy = swot.compute_gradient_4th_order(ssh, dx, dy)
+
+    # Geostrophic velocities
+    u_geo = -(g / f) * dssh_dy  # Zonal / across-track velocity
+    v_geo = (g / f) * dssh_dx   # Meridional / along-track velocity
+    speed = np.sqrt(u_geo**2 + v_geo**2)
+
+    return u_geo, v_geo, speed
+
+def compute_geostrophic_vorticity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, R_e=6371e3):
+    """
+    Computes geostrophic vorticity using 4th-order finite differences.
+    """
+    ssh = np.asarray(ssh)
+    M, N = ssh.shape
+    
+    # Ensure latitude array matches number of rows for df/dy calculation
+    lat = np.asarray(lat)
+    if lat.ndim != 1 or lat.shape[0] != M:
+        raise ValueError(f"lat must be a 1D array of length {M}")
+    
+    # Use 4th-order accurate functions for all derivatives
+    laplacian = swot.compute_laplacian_4th_order(ssh, dx, dy)
+    dssh_dx, _ = swot.compute_gradient_4th_order(ssh, dx, dy) # Only need the x-derivative
+
+    # Coriolis parameter and its meridional gradient
+    lat_rad = np.deg2rad(lat)
+    f = 2 * omega * np.sin(lat_rad)
+    df_dy = 2 * omega * np.cos(lat_rad) / R_e  # β = ∂f/∂y (s⁻¹ m⁻¹)
+    
+    f = f[:, None]
+    df_dy = df_dy[:, None]
+
+    # To prevent division by zero, ensure f is not too small
+    f[np.abs(f) < 1e-12] = 1e-12 
+    
+    zeta = (g / f) * laplacian
+    zeta_over_f = (g / f**2) * laplacian
+
+    return zeta_over_f
 
 def spatial_mean(anom, dims):
     '''returns spatial mean over specified dimensions'''
     return anom.mean(dim=dims, skipna=True)
 
-def compute_gradient(field, dx=2000, dy=2000):
-    field = np.array(field)
-    grad_x = np.zeros_like(field)
-    grad_y = np.zeros_like(field)
 
-    grad_x[1:-1, 1:-1] = (field[1:-1, 2:] - field[1:-1, :-2]) / (2 * dx)
-    grad_y[1:-1, 1:-1] = (field[2:, 1:-1] - field[:-2, 1:-1]) / (2 * dy)
+# ### Old codes i'm keeping around
+
+# def compute_gradient_5point(field, dx=2000, dy=2000):
+#     """
+#     Compute gradient using 5-point finite difference stencils for higher accuracy.
     
-    grad_x[:, 0] = (field[:, 1] - field[:, 0]) / dx
-    grad_x[:, -1] = (field[:, -1] - field[:, -2]) / dx
+#     5-point stencil: [1, -8, 0, 8, -1] / (12*h)
+#     Provides O(h⁴) accuracy vs O(h²) for 3-point
+#     """
+#     field = np.array(field, dtype=float)
+#     grad_x = np.zeros_like(field)
+#     grad_y = np.zeros_like(field)
+#     ny, nx = field.shape
+
+#     # Interior: 5-point stencil (O(h⁴) accuracy)
+#     # ∂f/∂x ≈ [f(x-2h) - 8f(x-h) + 8f(x+h) - f(x+2h)] / (12h)
+#     grad_x[2:-2, 2:-2] = (
+#         field[2:-2, :-4] - 8*field[2:-2, 1:-3] + 8*field[2:-2, 3:-1] - field[2:-2, 4:]
+#     ) / (12 * dx)
     
-    grad_y[0, :] = (field[1, :] - field[0, :]) / dy
-    grad_y[-1, :] = (field[-1, :] - field[-2, :]) / dy
-    return np.sqrt(grad_x**2 + grad_y**2)
+#     grad_y[2:-2, 2:-2] = (
+#         field[:-4, 2:-2] - 8*field[1:-3, 2:-2] + 8*field[3:-1, 2:-2] - field[4:, 2:-2]
+#     ) / (12 * dy)
 
-def compute_gradient_5point(field, dx=2000, dy=2000):
-    """
-    Compute gradient using 5-point finite difference stencils for higher accuracy.
+#     # Near boundaries: 3-point central difference  
+#     # Second row/column from edges
+#     grad_x[2:-2, 1] = (field[2:-2, 2] - field[2:-2, 0]) / (2 * dx)
+#     grad_x[2:-2, -2] = (field[2:-2, -1] - field[2:-2, -3]) / (2 * dx)
+#     grad_x[1, 2:-2] = (field[1, 3:-1] - field[1, 1:-3]) / (2 * dx)  
+#     grad_x[-2, 2:-2] = (field[-2, 3:-1] - field[-2, 1:-3]) / (2 * dx)
     
-    5-point stencil: [1, -8, 0, 8, -1] / (12*h)
-    Provides O(h⁴) accuracy vs O(h²) for 3-point
-    """
-    field = np.array(field, dtype=float)
-    grad_x = np.zeros_like(field)
-    grad_y = np.zeros_like(field)
-    ny, nx = field.shape
+#     grad_y[1, 2:-2] = (field[2, 2:-2] - field[0, 2:-2]) / (2 * dy)
+#     grad_y[-2, 2:-2] = (field[-1, 2:-2] - field[-3, 2:-2]) / (2 * dy)
+#     grad_y[2:-2, 1] = (field[3:-1, 1] - field[1:-3, 1]) / (2 * dy)
+#     grad_y[2:-2, -2] = (field[3:-1, -2] - field[1:-3, -2]) / (2 * dy)
 
-    # Interior: 5-point stencil (O(h⁴) accuracy)
-    # ∂f/∂x ≈ [f(x-2h) - 8f(x-h) + 8f(x+h) - f(x+2h)] / (12h)
-    grad_x[2:-2, 2:-2] = (
-        field[2:-2, :-4] - 8*field[2:-2, 1:-3] + 8*field[2:-2, 3:-1] - field[2:-2, 4:]
-    ) / (12 * dx)
+#     # Edges: one-sided differences
+#     # Left edge (j=0)
+#     grad_x[:, 0] = (-3*field[:, 0] + 4*field[:, 1] - field[:, 2]) / (2 * dx)
+#     # Right edge (j=-1)  
+#     grad_x[:, -1] = (3*field[:, -1] - 4*field[:, -2] + field[:, -3]) / (2 * dx)
+#     # Top edge (i=0)
+#     grad_y[0, :] = (-3*field[0, :] + 4*field[1, :] - field[2, :]) / (2 * dy)
+#     # Bottom edge (i=-1)
+#     grad_y[-1, :] = (3*field[-1, :] - 4*field[-2, :] + field[-3, :]) / (2 * dy)
+
+#     # Near-edge regions that couldn't use 5-point
+#     # Fill in the gaps with 3-point central where possible
+#     for i in [1, -2]:
+#         for j in [1, -2]:
+#             if 1 <= abs(i) <= ny-2 and 1 <= abs(j) <= nx-2:
+#                 grad_x[i, j] = (field[i, j+1] - field[i, j-1]) / (2 * dx)
+#                 grad_y[i, j] = (field[i+1, j] - field[i-1, j]) / (2 * dy)
+
+#     # Corners and remaining edge points: use nearby values or one-sided
+#     # These are handled by the edge calculations above
     
-    grad_y[2:-2, 2:-2] = (
-        field[:-4, 2:-2] - 8*field[1:-3, 2:-2] + 8*field[3:-1, 2:-2] - field[4:, 2:-2]
-    ) / (12 * dy)
+#     return grad_x, grad_y
 
-    # Near boundaries: 3-point central difference  
-    # Second row/column from edges
-    grad_x[2:-2, 1] = (field[2:-2, 2] - field[2:-2, 0]) / (2 * dx)
-    grad_x[2:-2, -2] = (field[2:-2, -1] - field[2:-2, -3]) / (2 * dx)
-    grad_x[1, 2:-2] = (field[1, 3:-1] - field[1, 1:-3]) / (2 * dx)  
-    grad_x[-2, 2:-2] = (field[-2, 3:-1] - field[-2, 1:-3]) / (2 * dx)
+# def compute_gradient_magnitude_5point(field, dx=2000, dy=2000):
+#     """
+#     Compute gradient magnitude using 5-point stencils.
+#     Returns |∇field| = √((∂f/∂x)² + (∂f/∂y)²)
+#     """
+#     grad_x, grad_y = compute_gradient_5point(field, dx, dy)
+#     return np.sqrt(grad_x**2 + grad_y**2)
+
+# def compute_gradient_components_5point(field, dx=2000, dy=2000):
+#     """
+#     Compute individual gradient components using 5-point stencils.
+#     Returns grad_x, grad_y separately for when you need both components.
+#     """
+#     return compute_gradient_5point(field, dx, dy)
+
+# def compute_laplacian(field, dx=2000, dy=2000):
+#     """
+#     Compute ∇² field using finite differences.
+#     Interior: central differences
+#     Edges: one-sided differences 
+#     Corners: simple extrapolation
+#     """
+#     f = np.array(field, dtype=float)
+#     lap = np.zeros_like(f)
+#     ny, nx = f.shape
+
+#     # Interior points: central differences
+#     lap[1:-1, 1:-1] = (
+#         (f[1:-1, 2:] - 2*f[1:-1, 1:-1] + f[1:-1, :-2]) / dx**2 +
+#         (f[2:, 1:-1] - 2*f[1:-1, 1:-1] + f[:-2, 1:-1]) / dy**2
+#     )
+
+#     # Edges using one-sided differences
     
-    grad_y[1, 2:-2] = (field[2, 2:-2] - field[0, 2:-2]) / (2 * dy)
-    grad_y[-2, 2:-2] = (field[-1, 2:-2] - field[-3, 2:-2]) / (2 * dy)
-    grad_y[2:-2, 1] = (field[3:-1, 1] - field[1:-3, 1]) / (2 * dy)
-    grad_y[2:-2, -2] = (field[3:-1, -2] - field[1:-3, -2]) / (2 * dy)
+#     # Top edge (i=0): forward difference in y
+#     lap[0, 1:-1] = (
+#         (f[0, 2:] - 2*f[0, 1:-1] + f[0, :-2]) / dx**2 +
+#         (f[2, 1:-1] - 2*f[1, 1:-1] + f[0, 1:-1]) / dy**2  # forward in y
+#     )
 
-    # Edges: one-sided differences
-    # Left edge (j=0)
-    grad_x[:, 0] = (-3*field[:, 0] + 4*field[:, 1] - field[:, 2]) / (2 * dx)
-    # Right edge (j=-1)  
-    grad_x[:, -1] = (3*field[:, -1] - 4*field[:, -2] + field[:, -3]) / (2 * dx)
-    # Top edge (i=0)
-    grad_y[0, :] = (-3*field[0, :] + 4*field[1, :] - field[2, :]) / (2 * dy)
-    # Bottom edge (i=-1)
-    grad_y[-1, :] = (3*field[-1, :] - 4*field[-2, :] + field[-3, :]) / (2 * dy)
+#     # Bottom edge (i=ny-1): backward difference in y
+#     lap[-1, 1:-1] = (
+#         (f[-1, 2:] - 2*f[-1, 1:-1] + f[-1, :-2]) / dx**2 +
+#         (f[-1, 1:-1] - 2*f[-2, 1:-1] + f[-3, 1:-1]) / dy**2  # backward in y
+#     )
 
-    # Near-edge regions that couldn't use 5-point
-    # Fill in the gaps with 3-point central where possible
-    for i in [1, -2]:
-        for j in [1, -2]:
-            if 1 <= abs(i) <= ny-2 and 1 <= abs(j) <= nx-2:
-                grad_x[i, j] = (field[i, j+1] - field[i, j-1]) / (2 * dx)
-                grad_y[i, j] = (field[i+1, j] - field[i-1, j]) / (2 * dy)
+#     # Left edge (j=0): forward difference in x
+#     lap[1:-1, 0] = (
+#         (f[1:-1, 2] - 2*f[1:-1, 1] + f[1:-1, 0]) / dx**2 +  # forward in x
+#         (f[2:, 0] - 2*f[1:-1, 0] + f[:-2, 0]) / dy**2
+#     )
 
-    # Corners and remaining edge points: use nearby values or one-sided
-    # These are handled by the edge calculations above
-    
-    return grad_x, grad_y
+#     # Right edge (j=nx-1): backward difference in x
+#     lap[1:-1, -1] = (
+#         (f[1:-1, -1] - 2*f[1:-1, -2] + f[1:-1, -3]) / dx**2 +  # backward in x
+#         (f[2:, -1] - 2*f[1:-1, -1] + f[:-2, -1]) / dy**2
+#     )
 
-def compute_gradient_magnitude_5point(field, dx=2000, dy=2000):
-    """
-    Compute gradient magnitude using 5-point stencils.
-    Returns |∇field| = √((∂f/∂x)² + (∂f/∂y)²)
-    """
-    grad_x, grad_y = compute_gradient_5point(field, dx, dy)
-    return np.sqrt(grad_x**2 + grad_y**2)
+#     # Corners: use neighboring edge values (simple approach)
+#     lap[0, 0] = (lap[0, 1] + lap[1, 0]) / 2
+#     lap[0, -1] = (lap[0, -2] + lap[1, -1]) / 2  
+#     lap[-1, 0] = (lap[-2, 0] + lap[-1, 1]) / 2
+#     lap[-1, -1] = (lap[-2, -1] + lap[-1, -2]) / 2
 
-def compute_gradient_components_5point(field, dx=2000, dy=2000):
-    """
-    Compute individual gradient components using 5-point stencils.
-    Returns grad_x, grad_y separately for when you need both components.
-    """
-    return compute_gradient_5point(field, dx, dy)
-
-def compute_laplacian(field, dx=2000, dy=2000):
-    """
-    Compute ∇² field using finite differences.
-    Interior: central differences
-    Edges: one-sided differences 
-    Corners: simple extrapolation
-    """
-    f = np.array(field, dtype=float)
-    lap = np.zeros_like(f)
-    ny, nx = f.shape
-
-    # Interior points: central differences
-    lap[1:-1, 1:-1] = (
-        (f[1:-1, 2:] - 2*f[1:-1, 1:-1] + f[1:-1, :-2]) / dx**2 +
-        (f[2:, 1:-1] - 2*f[1:-1, 1:-1] + f[:-2, 1:-1]) / dy**2
-    )
-
-    # Edges using one-sided differences
-    
-    # Top edge (i=0): forward difference in y
-    lap[0, 1:-1] = (
-        (f[0, 2:] - 2*f[0, 1:-1] + f[0, :-2]) / dx**2 +
-        (f[2, 1:-1] - 2*f[1, 1:-1] + f[0, 1:-1]) / dy**2  # forward in y
-    )
-
-    # Bottom edge (i=ny-1): backward difference in y
-    lap[-1, 1:-1] = (
-        (f[-1, 2:] - 2*f[-1, 1:-1] + f[-1, :-2]) / dx**2 +
-        (f[-1, 1:-1] - 2*f[-2, 1:-1] + f[-3, 1:-1]) / dy**2  # backward in y
-    )
-
-    # Left edge (j=0): forward difference in x
-    lap[1:-1, 0] = (
-        (f[1:-1, 2] - 2*f[1:-1, 1] + f[1:-1, 0]) / dx**2 +  # forward in x
-        (f[2:, 0] - 2*f[1:-1, 0] + f[:-2, 0]) / dy**2
-    )
-
-    # Right edge (j=nx-1): backward difference in x
-    lap[1:-1, -1] = (
-        (f[1:-1, -1] - 2*f[1:-1, -2] + f[1:-1, -3]) / dx**2 +  # backward in x
-        (f[2:, -1] - 2*f[1:-1, -1] + f[:-2, -1]) / dy**2
-    )
-
-    # Corners: use neighboring edge values (simple approach)
-    lap[0, 0] = (lap[0, 1] + lap[1, 0]) / 2
-    lap[0, -1] = (lap[0, -2] + lap[1, -1]) / 2  
-    lap[-1, 0] = (lap[-2, 0] + lap[-1, 1]) / 2
-    lap[-1, -1] = (lap[-2, -1] + lap[-1, -2]) / 2
-
-    return lap
+#     return lap
 
 def compute_laplacian_5point(field, dx=2000, dy=2000):
     """
@@ -272,8 +327,6 @@ def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_
     speed = np.sqrt(u_geo**2 + v_geo**2)
 
     return u_geo, v_geo, speed
-
-
 
 
 def compute_geostrophic_vorticity_5pt(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, R_e=6371e3):

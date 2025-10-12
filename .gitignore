@@ -125,4 +125,7 @@ job_slurm_batch
 
 # Ignore pickle files
 *.pkl
+pickles/
+
+
 

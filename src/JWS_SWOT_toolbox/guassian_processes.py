@@ -2,24 +2,13 @@ import numpy as np
 import scipy 
 from scipy.special import gamma
 from scipy.spatial.distance import cdist
+from scipy.linalg import cho_factor, cho_solve
 import numpy.linalg as la
 import time
 import numpy as np
 import JWS_SWOT_toolbox as swot
 
-def cov(s, n, L):
-    k = np.arange(n // 2 + 1) / L
-    r = np.arange(n // 2 + 1) * L / n
-    S_k = s(k)
-    C_r = scipy.fft.dct(S_k, type=1) / (2 * L)
-    variance_spectrum = (S_k[0]/2 + np.sum(S_k[1:n//2]) + S_k[n//2]/2) / L
-    variance_covariance = C_r[0]
-    scaling_factor = variance_spectrum / variance_covariance if variance_covariance != 0 else 1.0
-    C_r *= scaling_factor
-    print(f"Variance from spectrum:   {variance_spectrum:8.6f}")
-    print(f"Variance from covariance: {C_r[0]:8.6f}")
-    return scipy.interpolate.interp1d(r, C_r, kind='linear', bounds_error=False, fill_value="extrapolate")
-
+# --- Grid Functions ---
 def make_karin_points(karin, unit):
     nx = karin.track_length
     ny = 2 * karin.swath_width
@@ -79,6 +68,37 @@ def make_karin_points_from_data(karin, index): # Converts karin lats, lons into 
     x_target, y_target = make_target_grid_from_data(x_shifted, y_shifted, valid_mask)
 
     return x_valid, y_valid, x_target, y_target
+
+def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
+
+    # Use observed x/y extent from the data class 
+    x_min = np.nanmin(karin.x_grid)
+    x_max = np.nanmax(karin.x_grid)
+    y_min = np.nanmin(karin.y_grid)
+    y_max = np.nanmax(karin.y_grid)
+
+    # Default to KaRIn spacing if not provided
+    if dx is None:
+        dx = karin.dx
+    if dy is None:
+        dy = karin.dy
+
+    # Extension for ST analysis (pads with ~2 grid points on each side)
+    if extend:
+        x_min -= 2 * dx
+        x_max += 2 * dx
+
+    # 1D grid arrays
+    x_target = np.arange(x_min, x_max + dx, dx)
+    y_target = np.arange(y_min, y_max + dy, dy)
+
+    if unit == 'km':
+        x_target *= 1e-3
+        y_target *= 1e-3
+        
+    Xt, Yt = np.meshgrid(x_target, y_target)
+
+    return Xt.flatten(), Yt.flatten(), len(x_target), len(y_target), x_target, y_target
 
 def make_target_grid_from_data(x_shifted, y_shifted, valid_mask, extra_width=4):
     """Create target grid that fills the nadir gap between swaths"""
@@ -197,6 +217,21 @@ def make_nadir_points_from_data(karin, nadir, index):
     
     return x_valid, y_valid
 
+# --- Covariance Functions --- 
+
+def cov(s, n, L):
+    k = np.arange(n // 2 + 1) / L
+    r = np.arange(n // 2 + 1) * L / n
+    S_k = s(k)
+    C_r = scipy.fft.dct(S_k, type=1) / (2 * L)
+    variance_spectrum = (S_k[0]/2 + np.sum(S_k[1:n//2]) + S_k[n//2]/2) / L
+    variance_covariance = C_r[0]
+    scaling_factor = variance_spectrum / variance_covariance if variance_covariance != 0 else 1.0
+    C_r *= scaling_factor
+    print(f"Variance from spectrum:   {variance_spectrum:8.6f}")
+    print(f"Variance from covariance: {C_r[0]:8.6f}")
+    return scipy.interpolate.interp1d(r, C_r, kind='linear', bounds_error=False, fill_value="extrapolate")
+
 def build_covariance_matrix(cov_func, x, y):
     print("Calculating covariance matrices...")
     return cov_func(np.hypot(x[:, None] - x, y[:, None] - y))
@@ -207,6 +242,42 @@ def build_noise_matrix(nk_func, xk, yk, sigma, nn, n_obs):
     Nn = sigma**2 * np.eye(nn)
     N = np.block([[Nk, np.zeros((n_obs, nn))], [np.zeros((nn, n_obs)), Nn]])
     return N, Nk
+
+def balanced_covariance_func(params, max_radius=5000000, num_points=10000):
+    """
+    Creates a spatial covariance function for the balanced signal component
+    from a parameter vector.
+    """
+    
+    # Unpack parameters from the input vector
+    A_b, lam_b, s_param = params[0], params[1], params[2]
+    
+    # Define the spectral shape S(k) where k is in cycles/km
+    S = lambda k: A_b / (1 + (lam_b * k)**s_param)
+    
+    # Use swot.cov to get the spatial covariance function
+    cov_func = swot.cov(S, max_radius, num_points)
+    
+    return cov_func
+
+def noise_covariance_func(params, lam_n=100, cutoff=0.5, max_radius=5000, num_points=10000):
+    """
+    Creates a spatial covariance function for the unbalanced (KaRIN noise) component
+    from a parameter vector.
+    """
+    # Unpack parameters from the input vector
+    A_n, s_n = params[3], params[5]
+    
+    # Calculate the Gaussian taper width from the cutoff frequency
+    sigma_taper = 2 * np.pi * cutoff / np.sqrt(2 * np.log(2))
+    
+    # Define the spectral shape Sk(k) with a Gaussian taper
+    Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * np.exp(-0.5 * ((sigma_taper**2) * (k**2)))
+    
+    # Use swot.cov to get the spatial covariance function
+    cov_func = swot.cov(Sk, max_radius, num_points)
+    
+    return cov_func
 
 def cholesky_decomp(M, name="Matrix", jitter=False):
     print(f"Performing Cholesky decomposition for {name}...")
@@ -246,36 +317,21 @@ def generate_synthetic_realizations(swot, F, Fk, sigma_noise, nx, ny, nn, n_real
             np.array(etas_k, dtype=object), 
             np.array(etas_n, dtype=object))
 
-def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
-
-    # Use observed x/y extent from the data class 
-    x_min = np.nanmin(karin.x_grid)
-    x_max = np.nanmax(karin.x_grid)
-    y_min = np.nanmin(karin.y_grid)
-    y_max = np.nanmax(karin.y_grid)
-
-    # Default to KaRIn spacing if not provided
-    if dx is None:
-        dx = karin.dx
-    if dy is None:
-        dy = karin.dy
-
-    # Extension for ST analysis (pads with ~2 grid points on each side)
-    if extend:
-        x_min -= 2 * dx
-        x_max += 2 * dx
-
-    # 1D grid arrays
-    x_target = np.arange(x_min, x_max + dx, dx)
-    y_target = np.arange(y_min, y_max + dy, dy)
-
-    if unit == 'km':
-        x_target *= 1e-3
-        y_target *= 1e-3
-        
-    Xt, Yt = np.meshgrid(x_target, y_target)
-
-    return Xt.flatten(), Yt.flatten(), len(x_target), len(y_target), x_target, y_target
+def estimate_signal_on_target_cho_solve(R, cho_factor_tuple, h):
+    """
+    Estimates the signal using the factor from cho_factor and cho_solve.
+    """
+    print("Estimating signal on target points (using cho_solve)...")
+    start_time = time.time()
+    
+    # Solve (C+N)z = h efficiently using the pre-computed factor
+    z = cho_solve(cho_factor_tuple, h)
+    
+    # Calculate the final estimate
+    ht = R @ z
+    
+    print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
+    return ht
 
 def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
     print("Estimating signal on target points...")

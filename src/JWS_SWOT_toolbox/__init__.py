@@ -7,6 +7,6 @@ from .geometry_tools import *
 from .spectral_fits import * 
 from .guassian_processes import *
 from .data_classes import * 
-#from .scattering_transform import * # remove scatting transform for now
 from .cloud_process import *
 from .simulation_data import *
+from .derivatives import *

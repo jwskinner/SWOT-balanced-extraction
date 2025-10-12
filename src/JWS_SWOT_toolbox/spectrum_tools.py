@@ -6,12 +6,12 @@ def sin2_window_func(n):
     '''sine-squared window function for spectral analysis normalized for unit variance'''
     return np.sqrt(8/3) * np.sin(np.pi * np.arange(n) / n) ** 2
 
-def mean_power_spectrum(data, window, dim, average_dims, pers_check=True):
+def mean_power_spectrum(data, window, dim, average_dims):
     '''Computes the power spectrum using xarray'''
-    #pspec = xrft.power_spectrum(data, dim=dim, window='tukey', window_correction=True, scaling='density') # we can test other windows
     
-    pspec = xrft.power_spectrum(data * window, dim=dim)
-    return 2 * pspec.mean(dim=average_dims) # (factor of two is because we use one sided spectrum)
+    #pspec = xrft.power_spectrum(data, dim=dim, window='tukey', window_correction=True, scaling='density') # we can test other windows
+    pspec = xrft.power_spectrum(data * window, dim=dim, detrend=None)
+    return 2 * pspec.mean(dim=average_dims, skipna=True) # (factor of two is because we use one sided spectrum)
 
 def onesided_spectrum(data,  window, dx = 2e3):
     '''Computes the one-sided power spectrum using RFFT'''

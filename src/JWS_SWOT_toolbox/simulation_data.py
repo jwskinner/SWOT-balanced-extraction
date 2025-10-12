@@ -180,12 +180,22 @@ def pick_range_from_karin_times(karin_time_dt, data_folder, mode="cyclic", windo
     return dmin.strftime(DATE_FMT), dmax.strftime(DATE_FMT), matched
 
 # ---------- spatial interpolation functions ----------
+def _wrap_longitudes_to_match(lon_to_wrap, ref_lon2d):
+    """Return lon_to_wrap wrapped into the same convention as ref_lon2d."""
+    lon = np.asarray(lon_to_wrap)
+    kmin = float(np.nanmin(ref_lon2d)); kmax = float(np.nanmax(ref_lon2d))
+    if (kmax > 180.0) and (kmin >= 0.0):
+        # reference uses 0..360
+        out = np.mod(lon, 360.0)
+        # ensure non-negative
+        out = np.where(out < 0, out + 360.0, out)
+    else:
+        # reference uses -180..180
+        out = (lon % 360.0 + 180.0) % 360.0 - 180.0
+    return out
+    
 def interpolate_onto_karin_grid(XC, YC, ssh_model, karin_lon, karin_lat, buffer=0.5):
-    """
-    Interpolate model SSH onto the SWOT KaRIn grid, matching KaRIn's lon convention.
-    Robust to NaNs in target coords: only interpolates to finite (lat,lon) points.
-    """
-    # --- coerce shapes ---
+
     XC = np.asarray(XC).squeeze()
     YC = np.asarray(YC).squeeze()
     Z  = np.asarray(ssh_model).squeeze()
@@ -197,14 +207,10 @@ def interpolate_onto_karin_grid(XC, YC, ssh_model, karin_lon, karin_lat, buffer=
     if XC.ndim != 2 or YC.ndim != 2 or Z.ndim != 2:
         raise ValueError(f"XC/YC/ssh must be 2-D; got XC={XC.shape}, YC={YC.shape}, ssh={Z.shape}")
 
-    # --- convert SIM longitudes to match KaRIn convention (leave KaRIn as-is) ---
-    kmin = float(np.nanmin(KX)); kmax = float(np.nanmax(KX))
-    if (kmax > 180.0) or (kmin >= 0.0):
-        XCadj = np.mod(XC, 360.0)                              # KaRIn uses 0..360
-    else:
-        XCadj = (XC % 360.0 + 180.0) % 360.0 - 180.0           # KaRIn uses -180..180
+    # --- convert sim longitudes to match KaRIn convention  ---
+    XCadj = _wrap_longitudes_to_match(XC, KX)
 
-    # --- bbox around KaRIn target (dateline-aware for either convention) ---
+    # --- bbox around KaRIn target ---
     lat_min, lat_max = float(np.nanmin(KL)), float(np.nanmax(KL))
     lon_min, lon_max = float(np.nanmin(KX)), float(np.nanmax(KX))
 
@@ -215,7 +221,7 @@ def interpolate_onto_karin_grid(XC, YC, ssh_model, karin_lon, karin_lat, buffer=
         mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
                 ((XCadj >= lon_min - buffer) | (XCadj <= lon_max + buffer)))
 
-    # --- choose source set (subset if possible; else full) and drop non-finite ---
+    # --- choose source set and drop non-finite ---
     if np.any(mask) and np.isfinite(Z[mask]).any():
         Ys, Xs, Vs = YC[mask], XCadj[mask], Z[mask]
     else:
@@ -231,16 +237,20 @@ def interpolate_onto_karin_grid(XC, YC, ssh_model, karin_lon, karin_lat, buffer=
     tfin = np.isfinite(Yt) & np.isfinite(Xt)
 
     out = np.full(KL.shape, np.nan, dtype=float)
-    src_pts = np.column_stack((Ys.ravel(), Xs.ravel()))
-    tgt_pts = np.column_stack((Yt[tfin].ravel(), Xt[tfin].ravel()))
+    # Use (lon, lat) ordering explicitly (x, y)
+    src_pts = np.column_stack((Xs.ravel(), Ys.ravel()))
+    tgt_pts = np.column_stack((Xt[tfin].ravel(), Yt[tfin].ravel()))
+
+    # Debugging: number of source/target points
+    # print("interpolate_onto_karin_grid: src pts:", src_pts.shape[0], " tgt pts:", tgt_pts.shape[0])
 
     # linear first (needs at least 3 non-collinear points)
-    if Ys.size >= 3:
-        lin = griddata(src_pts, Vs.ravel(), tgt_pts, method="linear", fill_value=np.nan)
+    if src_pts.shape[0] >= 3:
+        lin = griddata(src_pts, Vs.ravel(), tgt_pts, method="cubic", fill_value=np.nan)
     else:
         lin = np.full((tgt_pts.shape[0],), np.nan, dtype=float)
 
-    # nearest fill for remaining NaNs (tgt_pts contains no NaNs now)
+    # nearest fill for remaining NaNs
     bad = np.isnan(lin)
     if bad.any():
         lin[bad] = griddata(src_pts, Vs.ravel(), tgt_pts[bad], method="nearest")
@@ -249,69 +259,68 @@ def interpolate_onto_karin_grid(XC, YC, ssh_model, karin_lon, karin_lat, buffer=
     return out
 
 def interpolate_onto_nadir_grid(XC, YC, nadir_lon, nadir_lat, ssh_model=None, buffer=0.5):
-
     if ssh_model is None:
         return np.full(nadir_lat.shape, np.nan, dtype=float)
-    
-    # Similar logic to interpolate_onto_karin_grid but for 1D nadir track
+
     XC = np.asarray(XC).squeeze()
     YC = np.asarray(YC).squeeze()
     Z = np.asarray(ssh_model).squeeze()
-    
+
     nadir_lat = np.asarray(nadir_lat)
     nadir_lon = np.asarray(nadir_lon)
-    
-    # Handle longitude conventions
-    nmin = float(np.nanmin(nadir_lon)); nmax = float(np.nanmax(nadir_lon))
-    if (nmax > 180.0) or (nmin >= 0.0):
-        XCadj = np.mod(XC, 360.0)
-    else:
-        XCadj = (XC % 360.0 + 180.0) % 360.0 - 180.0
-    
-    # Create bounding box
+
+    try:
+        # determine convention from XC itself
+        XC_u = _wrap_longitudes_to_match(XC, XC)  # returns in consistent convention
+    except Exception:
+        XC_u = XC
+
+    # rewrap nadir lon to the same convention as XC_u
+    nadir_lon_wrapped = _wrap_longitudes_to_match(nadir_lon, XC_u)
+
+    # Create bounding box for nadir track
     lat_min, lat_max = float(np.nanmin(nadir_lat)), float(np.nanmax(nadir_lat))
-    lon_min, lon_max = float(np.nanmin(nadir_lon)), float(np.nanmax(nadir_lon))
-    
+    lon_min, lon_max = float(np.nanmin(nadir_lon_wrapped)), float(np.nanmax(nadir_lon_wrapped))
+
     if lon_max - lon_min <= 180.0:
         mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
-                (XCadj >= lon_min - buffer) & (XCadj <= lon_max + buffer))
+                (XC_u >= lon_min - buffer) & (XC_u <= lon_max + buffer))
     else:
         mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
-                ((XCadj >= lon_min - buffer) | (XCadj <= lon_max + buffer)))
-    
-    # Select source points
+                ((XC_u >= lon_min - buffer) | (XC_u <= lon_max + buffer)))
+
     if np.any(mask) and np.isfinite(Z[mask]).any():
-        Ys, Xs, Vs = YC[mask], XCadj[mask], Z[mask]
+        Ys, Xs, Vs = YC[mask], XC_u[mask], Z[mask]
     else:
-        Ys, Xs, Vs = YC, XCadj, Z
-    
+        Ys, Xs, Vs = YC, XC_u, Z
+
     sfin = np.isfinite(Ys) & np.isfinite(Xs) & np.isfinite(Vs)
     Ys, Xs, Vs = Ys[sfin], Xs[sfin], Vs[sfin]
-    
     if Ys.size == 0:
         return np.full(nadir_lat.shape, np.nan, dtype=float)
-    
-    # Target points
-    tfin = np.isfinite(nadir_lat) & np.isfinite(nadir_lon)
+
+    # target points (use wrapped nadir lon)
+    tfin = np.isfinite(nadir_lat) & np.isfinite(nadir_lon_wrapped)
     out = np.full(nadir_lat.shape, np.nan, dtype=float)
-    
     if not np.any(tfin):
         return out
-    
-    src_pts = np.column_stack((Ys.ravel(), Xs.ravel()))
-    tgt_pts = np.column_stack((nadir_lat[tfin].ravel(), nadir_lon[tfin].ravel()))
-    
-    # Linear interpolation first
-    if Ys.size >= 3:
+
+    # use (lon, lat) ordering
+    src_pts = np.column_stack((Xs.ravel(), Ys.ravel()))
+    tgt_pts = np.column_stack((nadir_lon_wrapped[tfin].ravel(), nadir_lat[tfin].ravel()))
+
+    # Debug
+    # print("interpolate_onto_nadir_grid: src pts:", src_pts.shape[0], " tgt pts:", tgt_pts.shape[0])
+
+    if src_pts.shape[0] >= 3:
         lin = griddata(src_pts, Vs.ravel(), tgt_pts, method="linear", fill_value=np.nan)
     else:
         lin = np.full((tgt_pts.shape[0],), np.nan, dtype=float)
-    
-    # Fill with nearest neighbor
+
     bad = np.isnan(lin)
     if bad.any():
         lin[bad] = griddata(src_pts, Vs.ravel(), tgt_pts[bad], method="nearest")
-    
+
     out[tfin] = lin
     return out
 
@@ -351,7 +360,7 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
         mat = sio.loadmat(fpath)
         XC  = np.asarray(mat["XC"]).squeeze()    # (Ny,Nx)
         YC  = np.asarray(mat["YC"]).squeeze()    # (Ny,Nx)
-        ssh = np.asarray(mat["ssh"]).squeeze()   # (Ny,Nx)
+        ssh = np.asarray(mat.get("ssh", mat.get("ssh_daily_inst_filtered"))).squeeze()
         if ssh.ndim != 2 or XC.ndim != 2 or YC.ndim != 2:
             raise ValueError(f"In {fpath}: XC, YC, ssh must be 2-D; got {XC.shape}, {YC.shape}, {ssh.shape}")
 
@@ -377,7 +386,6 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
     ssh_karin_out = np.stack(ssh_karin_list, axis=0)       # (T,L,W)
     ssh_karin_full_out = np.stack(ssh_karin_full_list, axis=0)
     ssh_nadir_out = np.stack(ssh_nadir_list, axis=0)       # (T, L) or (T,)
-
 
     return (ssh_karin_full_out, ssh_karin_out, ssh_nadir_out,
             used)
