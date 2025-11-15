@@ -8,6 +8,17 @@ import time
 import numpy as np
 import JWS_SWOT_toolbox as swot
 
+# --- Pairwise distance matrix ---
+def pairwise_r(x0, y0, x1=None, y1=None):
+    # Euclidean distances between (x0,y0) and (x1,y1)
+    if x1 is None:  # square
+        dx = x0[:, None] - x0[None, :]
+        dy = y0[:, None] - y0[None, :]
+    else:
+        dx = x0[:, None] - x1[None, :]
+        dy = y0[:, None] - y1[None, :]
+    return np.hypot(dx, dy)
+
 # --- Grid Functions ---
 def make_karin_points(karin, unit):
     nx = karin.track_length
@@ -218,19 +229,81 @@ def make_nadir_points_from_data(karin, nadir, index):
     return x_valid, y_valid
 
 # --- Covariance Functions --- 
-
-def cov(s, n, L):
+def cov(s, L = 5000, n=100000): # default 10,000km with 200,000 samples so 50m sampling resolution
     k = np.arange(n // 2 + 1) / L
     r = np.arange(n // 2 + 1) * L / n
-    S_k = s(k)
+    if callable(s): # we can pass either a function or an array in here
+        S_k = s(k)
+    else: 
+        S_k = s
     C_r = scipy.fft.dct(S_k, type=1) / (2 * L)
     variance_spectrum = (S_k[0]/2 + np.sum(S_k[1:n//2]) + S_k[n//2]/2) / L
     variance_covariance = C_r[0]
     scaling_factor = variance_spectrum / variance_covariance if variance_covariance != 0 else 1.0
     C_r *= scaling_factor
+    
+    # Compute spacing and max wavenumber
+    delta_k = 1 / L
+    k_max = n / (2 * L)
+    print("")
+    print("---- Hankel Transform ----")
+    print(f"Δk (spacing): {delta_k:.6f} cpkm")
+    print(f"k_max (maximum wavenumber): {k_max:.6f} cpkm")
     print(f"Variance from spectrum:   {variance_spectrum:8.6f}")
     print(f"Variance from covariance: {C_r[0]:8.6f}")
-    return scipy.interpolate.interp1d(r, C_r, kind='linear', bounds_error=False, fill_value="extrapolate")
+    print("")
+    return scipy.interpolate.interp1d(r, C_r, kind='cubic', bounds_error=False, fill_value="extrapolate")
+
+def cov_2d_isotropic(s, L, n):
+    """
+    Isotropic 2D covariance C(r) from a radial PSD S(k) using the Hankel transform:
+      C(r) = ∫_0^∞ S(k) J0(2π k r) 2π k dk
+    """
+    from scipy.special import j0
+
+    # k-grid (uniform like yours)
+    k = np.arange(n // 2 + 1) / L                         # [cpkm]
+    dk = 1.0 / L                                          # [cpkm]
+    S_k = s(k)                                            # [variance per cpkm^2]
+
+    # r-grid to match your output domain [0, L/2]
+    r = np.arange(n // 2 + 1) * L / n                     # [km]
+
+    # 2D Hankel (order 0): C(r) = Σ S(k) J0(2π k r) (2π k dk)
+    kr = (2.0 * np.pi) * np.outer(r, k)                   # dimensionless
+    J = j0(kr)
+    weights = 2.0 * np.pi * k * dk                        # (2π k dk)
+
+    C_r = (J * (S_k * weights)[None, :]).sum(axis=1)
+    integrand = S_k * k
+    variance_spectrum = 2.0 * np.pi * (
+        0.5 * integrand[0] + integrand[1:-1].sum() + 0.5 * integrand[-1]
+    ) * dk
+    variance_covariance = C_r[0]
+    if variance_covariance != 0:
+        C_r *= (variance_spectrum / variance_covariance)
+
+    # Report the same diagnostics you print today
+    delta_k = dk
+    k_max = n / (2.0 * L)
+    print("")
+    print("---- Hankel Transform ----")
+    print(f"Δk (spacing): {delta_k:.6f} cpkm")
+    print(f"k_max (maximum wavenumber): {k_max:.6f} cpkm")
+    print(f"Variance from spectrum:   {variance_spectrum:8.6f}")
+    print(f"Variance from covariance: {C_r[0]:8.6f}")
+    print("")
+
+    return scipy.interpolate.interp1d(r, C_r, kind="cubic", bounds_error=False, fill_value="extrapolate")
+
+def make_cov_from_psd(S, L=5_000, n=5_000_000, isotropic_2d=False):
+    """
+    Wrapper to compute covariance from a PSD S(k). isotropic_2d=True uses 2D isotropic Hankel transform.
+    """
+    if isotropic_2d:
+        return cov_2d_isotropic(S, L, n)
+    else:
+        return swot.cov(S, L, n)
 
 def build_covariance_matrix(cov_func, x, y):
     print("Calculating covariance matrices...")
@@ -243,24 +316,35 @@ def build_noise_matrix(nk_func, xk, yk, sigma, nn, n_obs):
     N = np.block([[Nk, np.zeros((n_obs, nn))], [np.zeros((nn, n_obs)), Nn]])
     return N, Nk
 
-def balanced_covariance_func(params, max_radius=5000000, num_points=10000):
-    """
-    Creates a spatial covariance function for the balanced signal component
-    from a parameter vector.
-    """
-    
-    # Unpack parameters from the input vector
+def balanced_covariance_func(
+    params,
+    cutoff=2.0,
+    max_radius=5_000,
+    num_points=100_000, # gives 5m resolution
+    smooth=False,
+    scale_km=None,
+):
+
+    # Unpack parameters
     A_b, lam_b, s_param = params[0], params[1], params[2]
-    
-    # Define the spectral shape S(k) where k is in cycles/km
-    S = lambda k: A_b / (1 + (lam_b * k)**s_param)
-    
-    # Use swot.cov to get the spatial covariance function
+
+    # Base spectral shape S0(k)
+    S0 = lambda k: (A_b / (1.0 + (lam_b * k) ** s_param)) * (swot.taper(k, cutoff) ** 2)
+
+    # Apply optional smoothing in spectral space
+    if smooth and (scale_km is not None) and (scale_km > 0):
+        sigma_L = float(scale_km)
+        G = lambda k: np.exp(-2.0 * (np.pi * k * sigma_L)**2)
+        S = lambda k: S0(k) * G(k)
+        print(f"Gaussian smoothing: σ_L={sigma_L:.3f} km")
+    else:
+        S = S0
+
+    # Build and return the spatial covariance function
     cov_func = swot.cov(S, max_radius, num_points)
-    
     return cov_func
 
-def noise_covariance_func(params, lam_n=100, cutoff=0.5, max_radius=5000, num_points=10000):
+def noise_covariance_func(params, lam_n=100, cutoff=2.0, max_radius=5_000, num_points=100_000):
     """
     Creates a spatial covariance function for the unbalanced (KaRIN noise) component
     from a parameter vector.
@@ -268,11 +352,8 @@ def noise_covariance_func(params, lam_n=100, cutoff=0.5, max_radius=5000, num_po
     # Unpack parameters from the input vector
     A_n, s_n = params[3], params[5]
     
-    # Calculate the Gaussian taper width from the cutoff frequency
-    sigma_taper = 2 * np.pi * cutoff / np.sqrt(2 * np.log(2))
-    
     # Define the spectral shape Sk(k) with a Gaussian taper
-    Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * np.exp(-0.5 * ((sigma_taper**2) * (k**2)))
+    Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * swot.taper(k, cutoff)
     
     # Use swot.cov to get the spatial covariance function
     cov_func = swot.cov(Sk, max_radius, num_points)
@@ -283,7 +364,7 @@ def cholesky_decomp(M, name="Matrix", jitter=False):
     print(f"Performing Cholesky decomposition for {name}...")
     start_time = time.time()
     if jitter: 
-        eps = 1e-2 * np.trace(M) / M.shape[0]
+        eps = 1e-8 * np.trace(M) / M.shape[0]
         M_jittered = M + eps * np.eye(M.shape[0]) # jitter the diagonal if we need it but turned off for now
         F = la.cholesky(M_jittered)
     else: 
@@ -317,11 +398,10 @@ def generate_synthetic_realizations(swot, F, Fk, sigma_noise, nx, ny, nn, n_real
             np.array(etas_k, dtype=object), 
             np.array(etas_n, dtype=object))
 
-def estimate_signal_on_target_cho_solve(R, cho_factor_tuple, h):
+def estimate_signal_on_target_cho_solve(R, cho_factor_tuple, h, output=True):
     """
     Estimates the signal using the factor from cho_factor and cho_solve.
     """
-    print("Estimating signal on target points (using cho_solve)...")
     start_time = time.time()
     
     # Solve (C+N)z = h efficiently using the pre-computed factor
@@ -329,8 +409,9 @@ def estimate_signal_on_target_cho_solve(R, cho_factor_tuple, h):
     
     # Calculate the final estimate
     ht = R @ z
-    
-    print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
+
+    if output:
+        print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
     return ht
 
 def estimate_signal_on_target(c, xt, yt, x, y, C, N, h):
@@ -375,17 +456,15 @@ def estimate_signal_on_target_fast(R, C, N, h):
     print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
     return ht
 
-# SWOT covariance functions 
-def balanced_covariance(A_b, lam_b, s_param, L=5000000, max_k=10000e3):
-    S = lambda k: A_b / (1 + (lam_b * k)**s_param)
-    c = swot.cov(S, L, max_k)
-    return S, c
+# ---- Updated covariances with different tapers for each component (eqs 6,7 in paper) ----
+def balanced_psd_from_params(params):
+    A_b, lam_b, s_b = params[0], params[1], params[2]
+    return lambda k: A_b / (1.0 + (lam_b * k)**s_b)
 
-def unbalanced_covariance(A_n, s_n, lam_n=1e5, cutoff=1e3, L=5000, max_k=10000e3):
-    sigma = 2 * np.pi * cutoff / np.sqrt(2 * np.log(2))
-    Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * np.exp(-0.5 * (sigma**2) * k**2)
-    nk = swot.cov(Sk, L, max_k)
-    return Sk, nk
+def karin_noise_psd_from_params(params, lam_n=100):
+    # Using (A_n, s_n) at indices [3], [5] from the KaRIn fit
+    A_n, s_n = params[3], params[5]
+    return lambda k: A_n / (1.0 + (lam_n * k)**2)**(0.5 * s_n)
 
 def nadir_noise_std(N_n, delta_n):
     return np.sqrt(N_n / (2 * delta_n))

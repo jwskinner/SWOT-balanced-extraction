@@ -163,8 +163,8 @@ def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir,
     nadir_spec_sample_mean = nadir.spec_alongtrack_av[int(nadir.track_length/2):]
     
     # Put the wavenumbers through the models to get the functional form
-    spbalanced = swot.balanced_model(k_karin[1:], *poptcwg_karin[0:3])
-    spunbalanced = swot.unbalanced_model_aliased(k_karin, *poptcwg_karin[3:7])
+    spbalanced = swot.balanced_model_tapered(k_karin[1:], *poptcwg_karin[0:3])
+    spunbalanced = swot.unbalanced_model_tapered(k_karin, *poptcwg_karin[3:7])
     spnoise_nadir = swot.nadir_noise_model(k_nadir, poptcwg_nadir[0])
     
     # Create figure
@@ -195,7 +195,7 @@ def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir,
     axs[1].set_xlabel('wavenumber (cpkm)')
     axs[1].set_ylabel('PSD (cm$^2$ / cpkm)')
     # axs[1].set_xlim(1e-3, 3e-1)
-    axs[1].set_ylim(1e-3, 1e6)
+    #axs[1].set_ylim(1e-3, 1e6)
     axs[1].set_title('Nadir')
     axs[1].legend(loc='lower left', frameon=False, fontsize=9)
     

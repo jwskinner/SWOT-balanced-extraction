@@ -116,6 +116,6 @@ def open_batch_cloud_data(cloud_files, verbose=True):
         if verbose:
             print(f'Loading: {f}')
         with f:
-            ds = xr.open_dataset(f, engine='h5netcdf')  # use netcdf4 for compatibility
+            ds = xr.open_dataset(f, engine='h5netcdf')  
             datasets.append(ds)
     return datasets

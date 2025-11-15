@@ -1,22 +1,8 @@
 # Functions specific for importing the NA simulation data and interpolating the data to a SWOT track 
-import os
+import os, re
 import scipy.io as sio
-from datetime import datetime
-import numpy as np
-from scipy.interpolate import griddata
 from scipy.interpolate import interp1d
 import JWS_SWOT_toolbox as swot
-
-import os
-import re
-from datetime import datetime, timedelta
-import numpy as np
-
-DATE_FMT = "%Y_%m_%d"
-FNAME_RE = re.compile(r"snapshot_(\d{4})_(\d{2})_(\d{2})\.mat$")
-
-# ---------- imports ----------
-import os, re
 import numpy as np
 import scipy.io as sio
 from datetime import datetime, timedelta
@@ -96,14 +82,6 @@ def pick_range_from_karin_times(karin_time_dt, data_folder, mode="cyclic", windo
     dmax = max(matched) + timedelta(days=window_days)
     return dmin.strftime(DATE_FMT), dmax.strftime(DATE_FMT), matched
 
-# Functions specific for importing the NA simulation data and interpolating the data to a SWOT track 
-import os
-import scipy.io as sio
-from datetime import datetime, timedelta
-import numpy as np
-from scipy.interpolate import griddata, interp1d
-import JWS_SWOT_toolbox as swot
-import re
 
 # ---------- constants & regex ----------
 DATE_FMT = "%Y_%m_%d"
@@ -339,6 +317,18 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
         else:
             out = (lon + 180.0) % 360.0 - 180.0
         return out
+    
+    print("Computing time mean over all files")
+    ssh_all = []
+    for fn in os.listdir(data_folder):
+        if fn.endswith(".mat") and "snapshot_" in fn:
+            fpath = os.path.join(data_folder, fn)
+            ssh = np.asarray(sio.loadmat(fpath)["ssh"]).squeeze()
+            ssh_all.append(ssh)
+
+    ssh_all = np.stack(ssh_all, axis=0)
+    ssh_tmean = np.nanmean(ssh_all, axis=0)
+    print("Computed time mean over", ssh_all.shape[0], "files with shape", ssh_tmean.shape)
 
     # ---- inputs & basic coercions ----
     karin_lat = np.asarray(karin.lat)[0]
@@ -360,12 +350,14 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
         mat = sio.loadmat(fpath)
         XC  = np.asarray(mat["XC"]).squeeze()    # (Ny,Nx)
         YC  = np.asarray(mat["YC"]).squeeze()    # (Ny,Nx)
-        ssh = np.asarray(mat.get("ssh", mat.get("ssh_daily_inst_filtered"))).squeeze()
-        if ssh.ndim != 2 or XC.ndim != 2 or YC.ndim != 2:
-            raise ValueError(f"In {fpath}: XC, YC, ssh must be 2-D; got {XC.shape}, {YC.shape}, {ssh.shape}")
+        ssh_in = np.asarray(mat.get("ssh", mat.get("ssh_daily_inst_filtered"))).squeeze()
+        if ssh_in.ndim != 2 or XC.ndim != 2 or YC.ndim != 2:
+            raise ValueError(f"In {fpath}: XC, YC, ssh must be 2-D; got {XC.shape}, {YC.shape}, {ssh_in.shape}")
 
         # Match longitude convention to KaRIn
         XC = _wrap_like_karin(XC, karin_lon)
+
+        ssh = ssh_in - ssh_tmean # subtract the global time mean 
 
         # Interpolations (your existing helpers)
         ssh_karin = np.asarray(interpolate_onto_karin_grid(XC, YC, ssh, karin_lon, karin_lat))

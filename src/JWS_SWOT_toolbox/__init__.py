@@ -10,3 +10,7 @@ from .data_classes import *
 from .cloud_process import *
 from .simulation_data import *
 from .derivatives import *
+from .instrument_tools import *
+from .transforms import *
+from .diagnostics import * 
+from .julia_bridge import * 

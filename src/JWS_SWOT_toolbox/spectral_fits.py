@@ -1,6 +1,11 @@
 import numpy as np
 from scipy.optimize import curve_fit
 
+def taper(q, cutoff=2.0):
+    # Gaussian taper parameter for the SWOT ADTP measurement
+    sigma = np.pi * (cutoff/2) / np.sqrt(np.log(2))
+    return np.exp(-sigma**2 * q**2 / 2)
+
 def nadir_noise_model(k, N):
     return np.full_like(k, N) 
 
@@ -14,6 +19,13 @@ def balanced_model(k, A_b, lam, s_param):# for balanced part
     sp = A_b / (1 + (lam * k)**s_param)
     return sp
 
+def balanced_model_tapered(k, A_b, lam, s_param, cutoff=2.0):
+    
+    k = np.asarray(k, dtype=float)
+    sp = A_b / (1.0 + (lam * k)**s_param) # base balanced spectrum
+
+    return sp * taper(k, cutoff)
+
 def matern_spec(k, gm, lam_u):# for unbalanced part
     sp = 2*np.pi*gamma(gm+1/2)*(2*gm)**gm / (gamma(gm)*lam_u**(2*gm)) * (2*gm/lam_u**2 + 4*np.pi**2*k**2)**-(gm+1/2)
     return sp
@@ -24,33 +36,25 @@ def unbalanced_model_notaper(k, A_n, lam_n, s_n):
     sp = A_n / (1 + (lam_n * k)**2)**(s_n/2)
     return sp
 
-def unbalanced_model_aliased(k, A_n, lam_n=None, s_n=3.0, cutoff=1.0, k_N=0.25, n_max=2):
+def unbalanced_model_tapered(k, A_n, lam_n=None, s_n=3.0, cutoff=2.0, k_N=0.25, n_max=2):
     """
-    Aliased unbalanced model:
+    tapered unbalanced model:
       P_alias(k) = sum_{n=0}^{n_max} P( | n*k_N - k | ) * taper(|n*k_N - k|)
     where P(q) = A_n / (1 + (lam_n * q)**2)^(s_n/2)
     """
-
     k = np.asarray(k)
     if lam_n is None:
-        lam_n = 1e2  # keep original fallback
-
-    # Gaussian taper parameter (same form as original function)
-    sigma = 2 * np.pi * cutoff / np.sqrt(2 * np.log(2))
-    def taper(q):
-        return np.exp(-sigma**2 * q**2 / 2)
-
+        lam_n = 1e2 
     total = np.zeros_like(k, dtype=float)
 
     for n in range(0, n_max + 1):
         q = np.abs(2 * n * k_N - k)  # distance from aliased center
         Pq = A_n / (1.0 + (lam_n * q)**2)**(s_n / 2.0)
-        total += Pq * taper(q)
+        total += Pq * taper(q, cutoff)
 
     return total
 
-
-def unbalanced_model(k, A_n, lam_n, s_n, cutoff=0.5e0):
+def unbalanced_model_old(k, A_n, lam_n, s_n, cutoff=2.0):
     '''Model of unbalanced component with a taper at high wavenumbers'''
     sigma = 2 * np.pi * cutoff/np.sqrt(2*np.log(2))
     lam_n = 1e2  # set to 100km because it is not well constrained 
@@ -60,7 +64,7 @@ def unbalanced_model(k, A_n, lam_n, s_n, cutoff=0.5e0):
 
 def karin_model(k, A_b, lam_b, s_param, A_n, lam_n, s_n):
     #return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model(k, A_n, lam_n, s_n))
-    return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model_aliased(k, A_n, lam_n, s_n))
+    return np.log(balanced_model_tapered(k, A_b, lam_b, s_param) + unbalanced_model_tapered(k, A_n, lam_n, s_n))
 
 def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose = True):
     '''Fits the balanced/unbalanced models to the averaged power spectrum'''
@@ -96,7 +100,7 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
         max_len = max(len(p) for p in params)
         for name, param, err in zip(params, popt, perr):
             print(f"{name:<{max_len}} : {param:12.4e} ± {err:.2e}")
-    
+        print("")
     return popt, pcov
 
 
@@ -136,5 +140,6 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
     print("") 
     print("---- Nadir spectrum parameters ----")
     print(f"Fitted Nadir noise floor N = {popt[0]} ± {perr[0]:.2e}")
+    print("")
 
     return popt, pcov
