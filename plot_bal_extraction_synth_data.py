@@ -32,10 +32,6 @@ with open(NADIR_NA_PATH, "rb") as f:
 with open(BALANCED_PATH, "rb") as f:
     ht_all = pickle.load(f)  # (time, ny, nx), meters
 
-# print("t_coord:", karin_NA.t_coord)
-# print("date_list:", karin_NA.date_list)
-# print("num_cycles:", karin_NA.num_cycles)
-
 # Arrays
 ssh_noisy = np.asarray(karin_NA.ssh_noisy, dtype=float)  # (time, ny, nx)
 ssha_full = np.asarray(karin_NA.ssha_full, dtype=float)  # (time, ny, nx)
@@ -85,7 +81,7 @@ bal_map = np.asarray(ht_all[INDEX])        # (ny, nx)
 truth_full = ssha_full[INDEX]              # (ny, nx)
 
 # Match your crop on the across-track (columns) dimension: [:, 4:64]
-truth_map = truth_full[:, 5:65] 
+truth_map = truth_full[:, 5:64] 
 ssha_diff = truth_map - bal_map
 
 # -------------------
@@ -150,7 +146,7 @@ cbar.update_ticks()
 
 # Labels 
 for lab, ax in zip(["(a)", "(b)", "(c)", "(d)"], axs):
-    ax.text(0.001, 1.07, lab, transform=ax.transAxes, fontsize=fsize + 2,
+    ax.text(0.001, 1.07, lab, transform=ax.transAxes, fontsize=fsize,
             va="bottom", ha="left", bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.5))
 
 # Axis labels and ticks
@@ -232,7 +228,7 @@ cbar.formatter = mticker.FuncFormatter(lambda x, _: f"{x:.1f}")
 cbar.update_ticks()
 
 for lab, ax in zip(["(a)", "(b)", "(c)", "(d)"], axs):
-    ax.text(0.001, 1.07, lab, transform=ax.transAxes, fontsize=fsize + 2,
+    ax.text(0.001, 1.07, lab, transform=ax.transAxes, fontsize=fsize,
             va="bottom", ha="left", bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.5))
 
 axs[3].set_xlabel("Along track [km]", fontsize=fsize)
@@ -297,23 +293,24 @@ im3 = axs[2].imshow(vort_truth.T, origin="upper", cmap=cmap_vort, aspect="equal"
 axs[2].set_title("Simulation", fontsize=fsize)
 fig.colorbar(im3, ax=axs[2], **cb_kwargs).set_label(r"$\zeta_g/f$")
 
-# 4) Balanced filtered
-im2 = axs[3].imshow(vort_recon_gf.T, origin="upper", cmap=cmap_vort, aspect="equal",
+# 4) Difference
+im4 = axs[3].imshow(vort_diff.T, origin="upper", cmap="RdGy", aspect="equal",
                     extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
-axs[3].set_title("Balanced Extraction Filtered", fontsize=fsize)
-fig.colorbar(im2, ax=axs[3], **cb_kwargs).set_label(r"$\zeta_g/f$")
+axs[3].set_title(r"Simulation $−$ Balanced Extraction", fontsize=fsize)
+fig.colorbar(im4, ax=axs[3], **cb_kwargs).set_label(r"$\zeta_g/f$")
 
-# 5) Truth filtered
-im2 = axs[4].imshow(vort_truth_gf.T, origin="upper", cmap=cmap_vort, aspect="equal",
+# 5) Balanced filtered
+im2 = axs[4].imshow(vort_recon_gf.T, origin="upper", cmap=cmap_vort, aspect="equal",
                     extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
-axs[4].set_title("Simulation Filtered", fontsize=fsize)
+axs[4].set_title("Balanced Extraction Filtered", fontsize=fsize)
 fig.colorbar(im2, ax=axs[4], **cb_kwargs).set_label(r"$\zeta_g/f$")
 
-# 6) Difference
-im4 = axs[5].imshow(vort_diff.T, origin="upper", cmap="RdGy", aspect="equal",
+# 6) Truth filtered
+im2 = axs[5].imshow(vort_truth_gf.T, origin="upper", cmap=cmap_vort, aspect="equal",
                     extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
-axs[5].set_title(r"Simulation $−$ Balanced Extraction", fontsize=fsize)
-fig.colorbar(im4, ax=axs[5], **cb_kwargs).set_label(r"$\zeta_g/f$")
+axs[5].set_title("Simulation Filtered", fontsize=fsize)
+fig.colorbar(im2, ax=axs[5], **cb_kwargs).set_label(r"$\zeta_g/f$")
+
 
 # 7) Difference filtered
 im4 = axs[6].imshow(vort_truth_gf.T - vort_recon_gf.T, origin="upper", cmap="RdGy",
@@ -324,7 +321,7 @@ fig.colorbar(im4, ax=axs[6], **cb_kwargs).set_label(r"$\zeta_g/f$")
 
 # Labels (a–e)
 for lab, ax in zip(["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)"], axs):
-    ax.text(0.005, 1.07, lab, transform=ax.transAxes, fontsize=fsize + 2,
+    ax.text(0.005, 1.07, lab, transform=ax.transAxes, fontsize=fsize,
             va="bottom", ha="left", bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.5))
 
 for ax in axs:

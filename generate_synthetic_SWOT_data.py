@@ -182,17 +182,17 @@ nadir_NA.ssh_noisy = ssh_nadir_noisy
 karin_NA.poptcwg_karin = p_karin
 karin.poptcwg_karin = p_karin
 
-#with open("./pickles/karin_NA_tmean.pkl", "wb") as f:
-#    pickle.dump(karin_NA, f)
+with open("./pickles/karin_NA_tmean.pkl", "wb") as f:
+   pickle.dump(karin_NA, f)
 
-#with open("./pickles/nadir_NA_tmean.pkl", "wb") as f:
-#    pickle.dump(nadir_NA, f)
+with open("./pickles/nadir_NA_tmean.pkl", "wb") as f:
+   pickle.dump(nadir_NA, f)
 
-#with open("./pickles/nadir.pkl", "wb") as f:
-#    pickle.dump(nadir, f)
+with open("./pickles/nadir.pkl", "wb") as f:
+   pickle.dump(nadir, f)
 
-#with open("./pickles/karin.pkl", "wb") as f:
-#    pickle.dump(karin, f)
+with open("./pickles/karin.pkl", "wb") as f:
+   pickle.dump(karin, f)
 
 print("Saved")
 

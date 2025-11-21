@@ -383,252 +383,252 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
             used)
 
 
-# ---------- Legacy functions (kept for backward compatibility) ----------
+# # ---------- Legacy functions (kept for backward compatibility) ----------
 
-def interpolate_swot_pass_griddata_optimized(XC, YC, ssh_model, lon_swot, lat_swot, buffer=0.5):
-    """Legacy function - use interpolate_onto_karin_grid instead."""
+# def interpolate_swot_pass_griddata_optimized(XC, YC, ssh_model, lon_swot, lat_swot, buffer=0.5):
+#     """Legacy function - use interpolate_onto_karin_grid instead."""
     
-    # Bounding box
-    lat_min, lat_max = lat_swot.min(), lat_swot.max()
-    lon_min, lon_max = lon_swot.min(), lon_swot.max()
+#     # Bounding box
+#     lat_min, lat_max = lat_swot.min(), lat_swot.max()
+#     lon_min, lon_max = lon_swot.min(), lon_swot.max()
 
-    # Adjust longitude convention
-    XC_adj = (XC + 180) % 360 - 180
-    mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
-            (XC_adj >= lon_min - buffer) & (XC_adj <= lon_max + buffer))
+#     # Adjust longitude convention
+#     XC_adj = (XC + 180) % 360 - 180
+#     mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
+#             (XC_adj >= lon_min - buffer) & (XC_adj <= lon_max + buffer))
     
-    if lon_max - lon_min > 180:
-         mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
-                ((XC_adj >= lon_min - buffer) | (XC_adj <= lon_max + buffer)))
+#     if lon_max - lon_min > 180:
+#          mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
+#                 ((XC_adj >= lon_min - buffer) | (XC_adj <= lon_max + buffer)))
 
-    if not np.any(mask):
-        return np.full(lat_swot.shape, np.nan)
+#     if not np.any(mask):
+#         return np.full(lat_swot.shape, np.nan)
 
-    YC_subset = YC[mask]
-    XC_adj_subset = XC_adj[mask]
-    ssh_model_subset = ssh_model[mask]
+#     YC_subset = YC[mask]
+#     XC_adj_subset = XC_adj[mask]
+#     ssh_model_subset = ssh_model[mask]
 
-    source_points = np.column_stack((YC_subset, XC_adj_subset))
-    source_values = ssh_model_subset
-    target_points = np.column_stack((lat_swot.ravel(), lon_swot.ravel()))
+#     source_points = np.column_stack((YC_subset, XC_adj_subset))
+#     source_values = ssh_model_subset
+#     target_points = np.column_stack((lat_swot.ravel(), lon_swot.ravel()))
 
-    ssh_interpolated = griddata(source_points, source_values, target_points,
-                                method='linear', fill_value=np.nan)
+#     ssh_interpolated = griddata(source_points, source_values, target_points,
+#                                 method='linear', fill_value=np.nan)
 
-    return ssh_interpolated.reshape(lat_swot.shape)
+#     return ssh_interpolated.reshape(lat_swot.shape)
 
-def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, lat_min=None, lat_max=None):
-    """Extract swath data for a specific pass."""
+# def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, lat_min=None, lat_max=None):
+#     """Extract swath data for a specific pass."""
     
-    date_fmt = "%Y_%m_%d"
-    tmin = datetime.strptime(date_min, date_fmt)
-    tmax = datetime.strptime(date_max, date_fmt)
+#     date_fmt = "%Y_%m_%d"
+#     tmin = datetime.strptime(date_min, date_fmt)
+#     tmax = datetime.strptime(date_max, date_fmt)
 
-    mat_files = sorted([f for f in os.listdir(data_folder) if f.endswith(".mat")])
-    if not mat_files:
-        raise FileNotFoundError("No .mat files found in data folder.")
+#     mat_files = sorted([f for f in os.listdir(data_folder) if f.endswith(".mat")])
+#     if not mat_files:
+#         raise FileNotFoundError("No .mat files found in data folder.")
 
-    sample_file = os.path.join(data_folder, mat_files[0])
-    mat = sio.loadmat(sample_file)
-    XC = mat['XC']
-    YC = mat['YC']
+#     sample_file = os.path.join(data_folder, mat_files[0])
+#     mat = sio.loadmat(sample_file)
+#     XC = mat['XC']
+#     YC = mat['YC']
 
-    entry = next((e for e in pass_coords if e[0] == pass_num), None)
-    if entry is None:
-        raise ValueError(f"Pass {pass_num} not found in pass_coords.")
+#     entry = next((e for e in pass_coords if e[0] == pass_num), None)
+#     if entry is None:
+#         raise ValueError(f"Pass {pass_num} not found in pass_coords.")
 
-    lat = entry[1]
-    lon = (entry[2] + 180) % 360 - 180
+#     lat = entry[1]
+#     lon = (entry[2] + 180) % 360 - 180
 
-    if lat_min is not None and lat_max is not None:
-        if lat.ndim != 2:
-            raise ValueError("Expected 2D lat/lon arrays for filtering")
+#     if lat_min is not None and lat_max is not None:
+#         if lat.ndim != 2:
+#             raise ValueError("Expected 2D lat/lon arrays for filtering")
         
-        lat_mask = (lat >= lat_min) & (lat <= lat_max)
-        row_mask = np.any(lat_mask, axis=1)
+#         lat_mask = (lat >= lat_min) & (lat <= lat_max)
+#         row_mask = np.any(lat_mask, axis=1)
 
-        if not np.any(row_mask):
-            print(f"Warning: The latitude filter ({lat_min}, {lat_max}) removed all SWOT data for pass {pass_num}.")
-            return np.empty((0,)), np.empty((0,)), np.empty((0,))
+#         if not np.any(row_mask):
+#             print(f"Warning: The latitude filter ({lat_min}, {lat_max}) removed all SWOT data for pass {pass_num}.")
+#             return np.empty((0,)), np.empty((0,)), np.empty((0,))
 
-        lat = lat[row_mask, :]
-        lon = lon[row_mask, :]
+#         lat = lat[row_mask, :]
+#         lon = lon[row_mask, :]
         
-    ssh_list = []
+#     ssh_list = []
 
-    for fname in mat_files:
-        try:
-            date_str = fname.replace("snapshot_", "").replace(".mat", "")
-            t = datetime.strptime(date_str, date_fmt)
-        except ValueError:
-            continue
+#     for fname in mat_files:
+#         try:
+#             date_str = fname.replace("snapshot_", "").replace(".mat", "")
+#             t = datetime.strptime(date_str, date_fmt)
+#         except ValueError:
+#             continue
 
-        if not (tmin <= t <= tmax):
-            continue
+#         if not (tmin <= t <= tmax):
+#             continue
 
-        fpath = os.path.join(data_folder, fname)
-        mat = sio.loadmat(fpath)
-        ssh = mat['ssh']
+#         fpath = os.path.join(data_folder, fname)
+#         mat = sio.loadmat(fpath)
+#         ssh = mat['ssh']
         
-        ssh_interpolated = interpolate_swot_pass_griddata_optimized(XC, YC, ssh, lon, lat)
-        ssh_list.append(ssh_interpolated)
+#         ssh_interpolated = interpolate_swot_pass_griddata_optimized(XC, YC, ssh, lon, lat)
+#         ssh_list.append(ssh_interpolated)
 
-    if not ssh_list:
-        raise RuntimeError("No valid snapshot files found in time range.")
+#     if not ssh_list:
+#         raise RuntimeError("No valid snapshot files found in time range.")
 
-    ssh_all = np.stack(ssh_list)
+#     ssh_all = np.stack(ssh_list)
     
-    return ssh_all, lat, lon
+#     return ssh_all, lat, lon
 
 
-#### ------ OLD ------
+# #### ------ OLD ------
 
-def interpolate_swot_pass_griddata_optimized(XC, YC, ssh_model, lon_swot, lat_swot, buffer=0.5):
+# def interpolate_swot_pass_griddata_optimized(XC, YC, ssh_model, lon_swot, lat_swot, buffer=0.5):
 
-    # bouding box
-    lat_min, lat_max = lat_swot.min(), lat_swot.max()
-    lon_min, lon_max = lon_swot.min(), lon_swot.max()
+#     # bouding box
+#     lat_min, lat_max = lat_swot.min(), lat_swot.max()
+#     lon_min, lon_max = lon_swot.min(), lon_swot.max()
 
-    # mask it
-    XC_adj = (XC + 180) % 360 - 180
-    mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
-            (XC_adj >= lon_min - buffer) & (XC_adj <= lon_max + buffer))
+#     # mask it
+#     XC_adj = (XC + 180) % 360 - 180
+#     mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
+#             (XC_adj >= lon_min - buffer) & (XC_adj <= lon_max + buffer))
     
-    if lon_max - lon_min > 180:
-         mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
-                ((XC_adj >= lon_min - buffer) | (XC_adj <= lon_max + buffer)))
+#     if lon_max - lon_min > 180:
+#          mask = ((YC >= lat_min - buffer) & (YC <= lat_max + buffer) &
+#                 ((XC_adj >= lon_min - buffer) | (XC_adj <= lon_max + buffer)))
 
-    if not np.any(mask):
-        return np.full(lat_swot.shape, np.nan)
+#     if not np.any(mask):
+#         return np.full(lat_swot.shape, np.nan)
 
-    YC_subset = YC[mask]
-    XC_adj_subset = XC_adj[mask]
-    ssh_model_subset = ssh_model[mask]
+#     YC_subset = YC[mask]
+#     XC_adj_subset = XC_adj[mask]
+#     ssh_model_subset = ssh_model[mask]
 
-    source_points = np.column_stack((YC_subset, XC_adj_subset))
-    source_values = ssh_model_subset
-    target_points = np.column_stack((lat_swot.ravel(), lon_swot.ravel()))
+#     source_points = np.column_stack((YC_subset, XC_adj_subset))
+#     source_values = ssh_model_subset
+#     target_points = np.column_stack((lat_swot.ravel(), lon_swot.ravel()))
 
-    ssh_interpolated = griddata(source_points, source_values, target_points,
-                                method='linear', fill_value=np.nan)
+#     ssh_interpolated = griddata(source_points, source_values, target_points,
+#                                 method='linear', fill_value=np.nan)
 
-    return ssh_interpolated.reshape(lat_swot.shape), lat_swot, lon_swot
+#     return ssh_interpolated.reshape(lat_swot.shape), lat_swot, lon_swot
 
 
-def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, lat_min=None, lat_max=None):
+# def extract_pass_swath(pass_num, pass_coords, data_folder, date_min, date_max, lat_min=None, lat_max=None):
 
-    date_fmt = "%Y_%m_%d"
-    tmin = datetime.strptime(date_min, date_fmt)
-    tmax = datetime.strptime(date_max, date_fmt)
+#     date_fmt = "%Y_%m_%d"
+#     tmin = datetime.strptime(date_min, date_fmt)
+#     tmax = datetime.strptime(date_max, date_fmt)
 
-    mat_files = sorted([f for f in os.listdir(data_folder) if f.endswith(".mat")])
-    if not mat_files:
-        raise FileNotFoundError("No .mat files found in data folder.")
+#     mat_files = sorted([f for f in os.listdir(data_folder) if f.endswith(".mat")])
+#     if not mat_files:
+#         raise FileNotFoundError("No .mat files found in data folder.")
 
-    sample_file = os.path.join(data_folder, mat_files[0])
-    mat = sio.loadmat(sample_file)
-    XC = mat['XC']
-    YC = mat['YC']
+#     sample_file = os.path.join(data_folder, mat_files[0])
+#     mat = sio.loadmat(sample_file)
+#     XC = mat['XC']
+#     YC = mat['YC']
 
-    entry = next((e for e in pass_coords if e[0] == pass_num), None)
-    if entry is None:
-        raise ValueError(f"Pass {pass_num} not found in pass_coords.")
+#     entry = next((e for e in pass_coords if e[0] == pass_num), None)
+#     if entry is None:
+#         raise ValueError(f"Pass {pass_num} not found in pass_coords.")
 
-    lat = entry[1]
-    lon = (entry[2] + 180) % 360 - 180
+#     lat = entry[1]
+#     lon = (entry[2] + 180) % 360 - 180
 
-    if lat_min is not None and lat_max is not None:
-        if lat.ndim != 2:
-            raise ValueError("Expected 2D lat/lon arrays for filtering")
+#     if lat_min is not None and lat_max is not None:
+#         if lat.ndim != 2:
+#             raise ValueError("Expected 2D lat/lon arrays for filtering")
         
-        lat_mask = (lat >= lat_min) & (lat <= lat_max)
-        row_mask = np.any(lat_mask, axis=1)
+#         lat_mask = (lat >= lat_min) & (lat <= lat_max)
+#         row_mask = np.any(lat_mask, axis=1)
 
-        # If the filter removes all data, return empty arrays to avoid processing.
-        if not np.any(row_mask):
-            print(f"Warning: The latitude filter ({lat_min}, {lat_max}) removed all SWOT data for pass {pass_num}.")
-            return np.empty((0,)), np.empty((0,)), np.empty((0,))
+#         # If the filter removes all data, return empty arrays to avoid processing.
+#         if not np.any(row_mask):
+#             print(f"Warning: The latitude filter ({lat_min}, {lat_max}) removed all SWOT data for pass {pass_num}.")
+#             return np.empty((0,)), np.empty((0,)), np.empty((0,))
 
-        # Apply the mask to the coordinates that will be used in the loop
-        lat = lat[row_mask, :]
-        lon = lon[row_mask, :]
+#         # Apply the mask to the coordinates that will be used in the loop
+#         lat = lat[row_mask, :]
+#         lon = lon[row_mask, :]
         
-    ssh_list = []
+#     ssh_list = []
 
-    for fname in mat_files:
-        try:
-            date_str = fname.replace("snapshot_", "").replace(".mat", "")
-            t = datetime.strptime(date_str, date_fmt)
-        except ValueError:
-            continue
+#     for fname in mat_files:
+#         try:
+#             date_str = fname.replace("snapshot_", "").replace(".mat", "")
+#             t = datetime.strptime(date_str, date_fmt)
+#         except ValueError:
+#             continue
 
-        if not (tmin <= t <= tmax):
-            continue
+#         if not (tmin <= t <= tmax):
+#             continue
 
-        fpath = os.path.join(data_folder, fname)
-        mat = sio.loadmat(fpath)
-        ssh = mat['ssh']
+#         fpath = os.path.join(data_folder, fname)
+#         mat = sio.loadmat(fpath)
+#         ssh = mat['ssh']
         
-        ssh_interpolated = interpolate_swot_pass_griddata_optimized(XC, YC, ssh, lon, lat)
-        ssh_list.append(ssh_interpolated)
+#         ssh_interpolated = interpolate_swot_pass_griddata_optimized(XC, YC, ssh, lon, lat)
+#         ssh_list.append(ssh_interpolated)
 
-    if not ssh_list:
-        raise RuntimeError("No valid snapshot files found in time range.")
+#     if not ssh_list:
+#         raise RuntimeError("No valid snapshot files found in time range.")
 
-    ssh_all = np.stack(ssh_list)
+#     ssh_all = np.stack(ssh_list)
     
-    return ssh_all, lat, lon
+#     return ssh_all, lat, lon
 
-def sample_NA_sim_to_karin_and_nadir(ssh_model, lat_model, lon_model, 
-                                     karin_target_shape, nadir_target_shape,
-                                     return_full_sim=True):
+# def sample_NA_sim_to_karin_and_nadir(ssh_model, lat_model, lon_model, 
+#                                      karin_target_shape, nadir_target_shape,
+#                                      return_full_sim=True):
 
-    ntime, track_len, NA_total_width = ssh_model.shape
-    _, track_len_target, total_width = karin_target_shape
-    _, track_len_nadir = nadir_target_shape
+#     ntime, track_len, NA_total_width = ssh_model.shape
+#     _, track_len_target, total_width = karin_target_shape
+#     _, track_len_nadir = nadir_target_shape
 
-    swath_width = 25
-    track_axis = np.linspace(0, track_len - 1, track_len_target)
+#     swath_width = 25
+#     track_axis = np.linspace(0, track_len - 1, track_len_target)
 
-    # Interpolate SSH
-    ssh_interp = np.empty((ntime, track_len_target, NA_total_width))
-    for i in range(ntime):
-        f = interp1d(np.arange(track_len), ssh_model[i], axis=0, kind='linear', 
-                     bounds_error=False, fill_value='extrapolate')
-        ssh_interp[i] = f(track_axis)
+#     # Interpolate SSH
+#     ssh_interp = np.empty((ntime, track_len_target, NA_total_width))
+#     for i in range(ntime):
+#         f = interp1d(np.arange(track_len), ssh_model[i], axis=0, kind='linear', 
+#                      bounds_error=False, fill_value='extrapolate')
+#         ssh_interp[i] = f(track_axis)
 
-    # Interpolate LAT and LON
-    lat_interp = interp1d(np.arange(track_len), lat_model, axis=0, kind='linear',
-                          bounds_error=False, fill_value='extrapolate')(track_axis)
-    lon_interp = interp1d(np.arange(track_len), lon_model, axis=0, kind='linear',
-                          bounds_error=False, fill_value='extrapolate')(track_axis)
+#     # Interpolate LAT and LON
+#     lat_interp = interp1d(np.arange(track_len), lat_model, axis=0, kind='linear',
+#                           bounds_error=False, fill_value='extrapolate')(track_axis)
+#     lon_interp = interp1d(np.arange(track_len), lon_model, axis=0, kind='linear',
+#                           bounds_error=False, fill_value='extrapolate')(track_axis)
 
-    # Build KaRIn swath: gap in center, swath_width = 25 pixels per side
-    NA_sim_karin_ssh = np.full((ntime, track_len_target, total_width), np.nan)
-    NA_sim_karin_ssh[:, :, :swath_width] = ssh_interp[:, :, :swath_width]
-    NA_sim_karin_ssh[:, :, 35:60] = ssh_interp[:, :, 35:60]
+#     # Build KaRIn swath: gap in center, swath_width = 25 pixels per side
+#     NA_sim_karin_ssh = np.full((ntime, track_len_target, total_width), np.nan)
+#     NA_sim_karin_ssh[:, :, :swath_width] = ssh_interp[:, :, :swath_width]
+#     NA_sim_karin_ssh[:, :, 35:60] = ssh_interp[:, :, 35:60]
 
-    NA_sim_karin_lat = np.full((track_len_target, total_width), np.nan)
-    NA_sim_karin_lon = np.full((track_len_target, total_width), np.nan)
-    NA_sim_karin_lat[:, :swath_width] = lat_interp[:, :swath_width]
-    NA_sim_karin_lon[:, :swath_width] = lon_interp[:, :swath_width]
-    NA_sim_karin_lat[:, 35:60] = lat_interp[:, 35:60]
-    NA_sim_karin_lon[:, 35:60] = lon_interp[:, 35:60]
+#     NA_sim_karin_lat = np.full((track_len_target, total_width), np.nan)
+#     NA_sim_karin_lon = np.full((track_len_target, total_width), np.nan)
+#     NA_sim_karin_lat[:, :swath_width] = lat_interp[:, :swath_width]
+#     NA_sim_karin_lon[:, :swath_width] = lon_interp[:, :swath_width]
+#     NA_sim_karin_lat[:, 35:60] = lat_interp[:, 35:60]
+#     NA_sim_karin_lon[:, 35:60] = lon_interp[:, 35:60]
 
-    # Sample Nadir track
-    nadir_track_axis = np.linspace(0, track_len_target - 1, track_len_nadir).astype(int)
-    NA_sim_nadir_ssh = ssh_interp[:, nadir_track_axis, 30]
-    NA_sim_nadir_lat = lat_interp[nadir_track_axis, 30]
-    NA_sim_nadir_lon = lon_interp[nadir_track_axis, 30]
+#     # Sample Nadir track
+#     nadir_track_axis = np.linspace(0, track_len_target - 1, track_len_nadir).astype(int)
+#     NA_sim_nadir_ssh = ssh_interp[:, nadir_track_axis, 30]
+#     NA_sim_nadir_lat = lat_interp[nadir_track_axis, 30]
+#     NA_sim_nadir_lon = lon_interp[nadir_track_axis, 30]
 
-    if return_full_sim:
-        return (
-            NA_sim_karin_ssh, NA_sim_karin_lat, NA_sim_karin_lon,
-            NA_sim_nadir_ssh, NA_sim_nadir_lat, NA_sim_nadir_lon,
-            ssh_interp, lat_interp, lon_interp
-        )
-    else:
-        return (
-            NA_sim_karin_ssh, NA_sim_karin_lat, NA_sim_karin_lon,
-            NA_sim_nadir_ssh, NA_sim_nadir_lat, NA_sim_nadir_lon
-        )
+#     if return_full_sim:
+#         return (
+#             NA_sim_karin_ssh, NA_sim_karin_lat, NA_sim_karin_lon,
+#             NA_sim_nadir_ssh, NA_sim_nadir_lat, NA_sim_nadir_lon,
+#             ssh_interp, lat_interp, lon_interp
+#         )
+#     else:
+#         return (
+#             NA_sim_karin_ssh, NA_sim_karin_lat, NA_sim_karin_lon,
+#             NA_sim_nadir_ssh, NA_sim_nadir_lat, NA_sim_nadir_lon
+#         )

@@ -36,9 +36,9 @@ def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_
 
     return u_geo, v_geo, speed
 
-def compute_geostrophic_vorticity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, R_e=6371e3):
+def compute_geostrophic_vorticity(ssh, dx, dy, lat, order=4, g=9.81, omega=7.2921e-5, R_e=6371e3):
     """
-    Computes geostrophic vorticity using 4th-order finite differences.
+    Computes geostrophic vorticity using nth-order finite differences.
     """
     ssh = np.asarray(ssh)
     M, N = ssh.shape
@@ -49,8 +49,12 @@ def compute_geostrophic_vorticity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, R_e
         raise ValueError(f"lat must be a 1D array of length {M}")
     
     # Use 4th-order accurate functions for all derivatives
-    laplacian = swot.compute_laplacian_4th_order(ssh, dx, dy)
-    dssh_dx, _ = swot.compute_gradient_4th_order(ssh, dx, dy) # Only need the x-derivative
+    if order==4:
+        laplacian = swot.compute_laplacian_4th_order(ssh, dx, dy)
+        dssh_dx, _ = swot.compute_gradient_4th_order(ssh, dx, dy) # Only need the x-derivative
+    else: 
+        laplacian = swot.compute_laplacian_2nd_order(ssh, dx, dy)
+        dssh_dx, _ = swot.compute_gradient_2nd_order(ssh, dx, dy) 
 
     # Coriolis parameter and its meridional gradient
     lat_rad = np.deg2rad(lat)

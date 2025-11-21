@@ -14,3 +14,4 @@ from .instrument_tools import *
 from .transforms import *
 from .diagnostics import * 
 from .julia_bridge import * 
+from .outputs import *

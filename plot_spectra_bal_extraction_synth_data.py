@@ -75,7 +75,7 @@ spec_mean_of_mean     = np.nanmean(spec_mean, axis=0)
 t.lap("Spectra generated")
 
 # Spectra 
-ssh_full_map_2d = karin_NA.ssha_full[TIME_INDEX, :, 5:65]
+ssh_full_map_2d = karin_NA.ssha_full[TIME_INDEX, :, 5:64]
 spec_ssh_full = power_spec_1d(ssh_full_map_2d*100)
 ssh_noisy = karin_NA.ssh_noisy[TIME_INDEX]
 spec_ssh_noisy = power_spec_1d(ssh_noisy*100)

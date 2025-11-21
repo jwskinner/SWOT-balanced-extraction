@@ -1,8 +1,10 @@
-import matplotlib.pyplot as plt
 import os
 import numpy as np
 import cmocean
 import JWS_SWOT_toolbox as swot
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
+import cartopy.crs as ccrs
 
 def set_plot_style(font='Fira Sans'):
     plt.rcParams['font.family'] = 'sans-serif'
@@ -153,7 +155,7 @@ def plot_ssh_summary(ht, nyt, nxt,
     print(f"Saved plot to {plot_filename}")
 
 def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir, 
-                               output_filename='swot_karin_nadir_fit.pdf', 
+                               output_filename='swot_karin_nadir_fit.pdf',
                                figsize=(8, 4), dpi=120):
     
     # Get the one-sided spectra
@@ -183,7 +185,7 @@ def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir,
     axs[0].set_xlabel('wavenumber (cpkm)')
     axs[0].set_ylabel('PSD (cm$^2$ / cpkm)')
     # axs[0].set_xlim(1e-3, 3e-1)
-    axs[0].set_ylim(1e-3, 1e6)
+    axs[0].set_ylim(1e-5, 1e6)
     axs[0].set_title('KaRIn')
     axs[0].legend(loc='lower left', frameon=False, fontsize=9)
     
@@ -202,15 +204,10 @@ def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir,
     # Save figure
     if output_filename:
         plt.savefig(output_filename, bbox_inches='tight')
+        
     
     return fig, axs
 
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-import cartopy.crs as ccrs
-
-# Plot the NA simulation vs SWOT maps and spectra
 def plot_swot_sim_maps_and_spectra(
     *,
     karin_NA, nadir_NA,
@@ -395,3 +392,148 @@ def plot_swot_sim_maps_and_spectra(
 
     return fig, {"sim": ax0, "swot": ax1, "spec": ax2}
 
+import matplotlib.pyplot as plt
+import numpy as np
+import cmocean
+import os
+from matplotlib import rcParams
+
+# Ensure standard plotting settings
+rcParams['axes.unicode_minus'] = True
+
+def fmt_minus(x, ndp=1):
+    s = f"{x:.{ndp}f}"
+    return s.replace("-", "−")
+
+def plot_balanced_extraction(
+    karin, 
+    nadir, 
+    ht_map, 
+    index,  
+    outdir="./",
+    grid_res_m=2000
+):
+    """
+    Plots observed SSHA, extracted balanced SSHA, Geostrophic Speed, and Vorticity.
+    """
+    if not os.path.exists(outdir):
+        os.makedirs(outdir, exist_ok=True)
+    
+    outname = f"{outdir}/balanced_extraction_cycle{karin.shared_cycles[index]}_index_{index:03d}.png"
+    
+    # --- 1. Setup Dimensions and Grids ---
+    nxt, nyt = ht_map.shape
+
+    x_extent_km = nyt * float(karin.dx) * 1e-3
+    y_extent_km = nxt * float(karin.dy) * 1e-3
+    
+    x_km = np.linspace(0, x_extent_km, nyt)
+    y_km = np.linspace(0, y_extent_km, nxt)
+    
+    # settings
+    vmin, vmax = -0.20, 0.20
+    grad_vmin, grad_vmax = 0.0, 1.5
+    vort_vmin, vort_vmax = -1.0, 1.0
+    
+    x_grid_k = karin.x_grid
+    y_grid_k = karin.y_grid
+
+    mask_k_2d = np.isfinite(karin.ssha[index])
+    x_k_valid = x_grid_k[mask_k_2d].flatten()
+    y_k_valid = y_grid_k[mask_k_2d].flatten()
+    ssh_k_valid = karin.ssha[index][mask_k_2d].flatten()
+
+    mask_n = np.isfinite(nadir.ssha[index])
+    x_n_valid = nadir.x_grid[mask_n] if nadir.x_grid.ndim == 1 else nadir.x_grid[mask_n]
+    y_n_valid = nadir.y_grid[mask_n] if nadir.y_grid.ndim == 1 else nadir.y_grid[mask_n]
+    ssh_n_valid = nadir.ssha[index][mask_n]
+
+    lats = np.linspace(np.nanmin(karin.lat[index, :, :]), np.nanmax(karin.lat[index, :, :]),nxt)
+    ht_masked = np.ma.masked_invalid(ht_map)
+    geo_vort = swot.compute_geostrophic_vorticity(ht_masked, grid_res_m, grid_res_m, lats)
+    ug, vg, geo_vel = swot.compute_geostrophic_velocity(ht_masked, grid_res_m, grid_res_m, lats)
+
+    ht_plot = np.ma.masked_invalid(np.clip(ht_map, vmin, vmax))
+    geo_vel_plot = np.ma.masked_invalid(np.clip(geo_vel, grad_vmin, grad_vmax))
+    geo_vort_plot = np.ma.masked_invalid(np.clip(geo_vort, vort_vmin, vort_vmax))
+
+    fig, axes = plt.subplots(4, 1, figsize=(15, 10), sharex=True, gridspec_kw={"hspace": 0.4})
+    extent = [0, x_km.max(), 0, y_km.max()]
+
+    sc1 = axes[0].scatter(
+        y_k_valid * 1e-3, x_k_valid * 1e-3,
+        c=ssh_k_valid, s=5, cmap='cmo.balance',
+        vmin=vmin, vmax=vmax, edgecolor="none",
+        rasterized=True
+    )
+    axes[0].scatter(
+        y_n_valid * 1e-3, x_n_valid * 1e-3,
+        c=ssh_n_valid, s=5, cmap='cmo.balance',
+        vmin=vmin, vmax=vmax, edgecolor="none",
+        rasterized=True
+    )
+    axes[0].set_title("Observed SSHA")
+    axes[0].set_ylabel("across-track (km)")
+    axes[0].margins(x=0, y=0)
+    axes[0].set_ylim(0, y_km.max())
+    axes[0].set_xlim(0, x_km.max())
+    axes[0].set_aspect("equal")
+
+    cbar0 = fig.colorbar(sc1, ax=axes[0], shrink=0.7, pad=0.02)
+    cbar0.set_ticks([vmin, 0, vmax])
+    cbar0.set_ticklabels([fmt_minus(vmin), "0.0", fmt_minus(vmax)])
+    cbar0.set_label(r'SSHA [m]')
+
+    im0 = axes[1].imshow(
+        ht_plot, origin="lower", extent=extent,
+        cmap='cmo.balance', vmin=vmin, vmax=vmax, rasterized=True
+    )
+    axes[1].set_title("Extracted Balanced SSHA")
+    axes[1].set_ylabel("across-track (km)")
+    axes[1].set_aspect("equal")
+
+    cbar1 = fig.colorbar(im0, ax=axes[1], shrink=0.7, pad=0.02)
+    cbar1.set_ticks([vmin, 0, vmax])
+    cbar1.set_ticklabels([fmt_minus(vmin), "0.0", fmt_minus(vmax)])
+    cbar1.set_label(r'SSHA [m]')
+
+    im1 = axes[2].imshow(
+        geo_vel_plot, origin="lower", extent=extent,
+        cmap='cmo.deep_r', vmin=grad_vmin, vmax=grad_vmax, rasterized=True
+    )
+    axes[2].set_title(r"Geostrophic Speed")
+    axes[2].set_ylabel("across-track (km)")
+    axes[2].set_aspect("equal")
+
+    cbar2 = fig.colorbar(im1, ax=axes[2], shrink=0.7, pad=0.02)
+    cbar2.set_ticks([grad_vmin, 0, grad_vmax])
+    cbar2.set_ticklabels([fmt_minus(grad_vmin), "0.0", fmt_minus(grad_vmax)])
+    cbar2.set_label(r'$|\mathbf{u}_g|$ [m s$^{-1}$]')
+
+    im2 = axes[3].imshow(
+        geo_vort_plot, origin="lower", extent=extent,
+        cmap='cmo.curl', vmin=vort_vmin, vmax=vort_vmax, rasterized=True
+    )
+    axes[3].set_title("Geostrophic Vorticity")
+    axes[3].set_xlabel("along-track distance (km)")
+    axes[3].set_ylabel("across-track (km)")
+    axes[3].set_aspect("equal")
+
+    cbar3 = fig.colorbar(im2, ax=axes[3], shrink=0.7, pad=0.02)
+    cbar3.set_ticks([vort_vmin, 0, vort_vmax])
+    cbar3.set_ticklabels([fmt_minus(vort_vmin), "0.0", fmt_minus(vort_vmax)])
+    cbar3.set_label(r'$\zeta_g / f$')
+
+    panels = ["a)", "b)", "c)", "d)"]
+    for i, ax in enumerate(axes):
+        ax.set_title(panels[i], loc='left', fontsize=13)
+
+    yticks = np.arange(0, y_km.max() + 1, 40)
+    for ax in axes:
+        ax.set_yticks(yticks)
+
+    print(f"Saving plot to {outname}...")
+    plt.savefig(outname, dpi=300, bbox_inches="tight")
+    plt.show()
+
+    return  ug, vg, geo_vel, geo_vort

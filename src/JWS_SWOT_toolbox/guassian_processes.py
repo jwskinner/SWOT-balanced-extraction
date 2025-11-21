@@ -100,7 +100,7 @@ def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
         x_max += 2 * dx
 
     # 1D grid arrays
-    x_target = np.arange(x_min, x_max + dx, dx)
+    x_target = np.arange(x_min, x_max + dx, dx) # 0.5dx because we are on a half grid
     y_target = np.arange(y_min, y_max + dy, dy)
 
     if unit == 'km':

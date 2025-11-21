@@ -7,7 +7,7 @@ import xrft
 class KarinData:
     def __init__(self, num_cycles, track_length, lat_min, lat_max, pass_number):
         self.swath_width = 25
-        self.middle_width = 10 
+        self.middle_width = 9 
         self.num_cycles = num_cycles
         self.track_length = track_length
         self.total_width = 2 * self.swath_width + self.middle_width
@@ -147,7 +147,6 @@ class NadirData:
         self.cycle_dates = None          # np.datetime64[ns] (num_cycles,)
         self.lat_full = None
         self.lon_full = None
-    
     
     def coordinates(self):
         self.x_km, self.y_km = swot.convert_to_xy_grid(self, self.karin)

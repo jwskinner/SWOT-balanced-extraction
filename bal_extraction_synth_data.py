@@ -20,7 +20,7 @@ KARIN_NA_PATH    = f"{PICKLES_DIR}/karin_NA_tmean.pkl"
 NADIR_NA_PATH    = f"{PICKLES_DIR}/nadir_NA_tmean.pkl"
 KARIN_PATH       = f"{PICKLES_DIR}/karin.pkl"
 NADIR_PATH       = f"{PICKLES_DIR}/nadir.pkl"
-SIGMA_L_KM       = 0.0           # Gaussian spectral taper scale
+SIGMA_L_KM       = 1.0            # Gaussian spectral taper scale
 COMPUTE_POSTERIOR= True           # toggle posterior on target grid
 TAPER_CUTOFF     = 2.0            # "T(k)" cutoff
 OUTNAME          = f"balanced_extraction_synth_NA_tmean_sm_{int(SIGMA_L_KM)}km"
@@ -62,6 +62,7 @@ nad_noisy_xr = xr.DataArray(
     coords=[np.arange(ntime), nadir_NA.y_coord_km],
     dims=["sample", "nadir_line"],
 )
+
 spec_nad_noisy = swot.mean_power_spectrum(nad_noisy_xr, nadir_NA.window, "nadir_line", ["sample"])
 
 # Fit spectra to get parameters
@@ -87,25 +88,17 @@ xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=False)
 n_t = xt.size
 t.lap("Grids and masks done")
 
+print(nxt, nyt)
+
 # -------------------------
 # Distance matrices in km
 # -------------------------
-def pairwise_r(x0, y0, x1=None, y1=None):
-    # Euclidean distances between (x0,y0) and (x1,y1)
-    if x1 is None:  # square
-        dx = x0[:, None] - x0[None, :]
-        dy = y0[:, None] - y0[None, :]
-    else:
-        dx = x0[:, None] - x1[None, :]
-        dy = y0[:, None] - y1[None, :]
-    return np.hypot(dx, dy)
-
-r_kk = pairwise_r(xkk, ykk)
-r_nn = pairwise_r(xnn, ynn) 
-r_kn = pairwise_r(xkk, ykk, xnn, ynn) 
-r_tk = pairwise_r(xt, yt, xkk, ykk)
-r_tn = pairwise_r(xt, yt, xnn, ynn)
-r_tt = pairwise_r(xt, yt)
+r_kk = swot.pairwise_r(xkk, ykk)
+r_nn = swot.pairwise_r(xnn, ynn) 
+r_kn = swot.pairwise_r(xkk, ykk, xnn, ynn) 
+r_tk = swot.pairwise_r(xt, yt, xkk, ykk)
+r_tn = swot.pairwise_r(xt, yt, xnn, ynn)
+r_tt = swot.pairwise_r(xt, yt)
 t.lap("Distance matrices built")
 
 # -------------------------
@@ -125,7 +118,7 @@ l_sample = 5000
 kk = np.arange(n_samples // 2 + 1) / l_sample                  # wavenumber grid for transforms
 
 Tfun  = lambda k: swot.taper(k, cutoff=TAPER_CUTOFF)                                             # T(k) is taper function  
-C_B      = jl.cov(B_psd(kk), kk)                                          # C[B]
+C_B      = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk), kk), kk)                                          # C[B]
 C_BT     = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk)*Tfun(kk), kk), kk)      # C[B T]
 C_NT2    = jl.cov(jl.abel(jl.iabel(Nk_psd(kk), kk)*Tfun(kk)**2, kk), kk)  # C[N T^2]
 
@@ -174,12 +167,11 @@ R = np.concatenate([R_tK, R_tN], axis=1)
 
 t.lap("Covariance blocks built")
 
-
 # -------------------------
 # Cho factor
 # -------------------------
 eps = 1e-8 * float(np.mean(np.diag(C_obs)))
-cho = la.cho_factor(C_obs + eps*np.eye(C_obs.shape[0]), lower=True)
+cho = la.cho_factor(C_obs + 0.0 * eps*np.eye(C_obs.shape[0]), lower=True) # I turned the noise off
 t.lap("Cholesky done")
 
 # -------------------------
@@ -190,7 +182,7 @@ n_times = karin_NA.ssh_noisy.shape[0]
 ht_all = np.empty((n_times, nyt, nxt), dtype=float)
 
 for i in range(n_times):
-    h_k = noisy_karin[i][mask_k].ravel()  # in [cm]
+    h_k = noisy_karin[i][mask_k].ravel()     # in [cm]
     h_n = noisy_nadir[i][mask_n]             # in [cm]
     h_obs = np.concatenate([h_k, h_n])
 
@@ -216,7 +208,7 @@ if COMPUTE_POSTERIOR:
     L, lower = la.cho_factor(C_obs, lower=True, check_finite=False, overwrite_a=False)
     W = solve_triangular(L, R.T, lower=True, check_finite=False, overwrite_b=False)
     C_mean = W.T @ W                       # covariance of posterior mean R @ C_obs^{-1} @ R.T
-    P = R_tt - C_mean                      # posterior covariance
+    P = R_tt - C_mean                      # posterior 
     
     posterior_variance = np.diag(P)
     posterior_variance_field = posterior_variance.reshape(nyt, nxt)

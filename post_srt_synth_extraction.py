@@ -5,7 +5,6 @@ Read saved posterior P and reconstructed fields (ht_all), then compare:
 - Posterior std (theory) vs Empirical std over time (truth - recon)
 for SSH [cm], u_g, v_g [cm/s], and zeta/f [—], as 1D across-track (y-mean) profiles.
 """
-
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,9 +15,9 @@ from scipy.linalg import cholesky
 # Config / paths
 # -------------------
 PICKLES = "./pickles"
-KARIN_NA_PATH   = f"{PICKLES}/karin_NA_tmean.pkl"                      # synthetic truth & grids
-HT_ALL_PATH     = f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_1km.pkl"  # saved recon (m) 
-POST_PATH       = f"{PICKLES}/posterior_balanced_extraction_synth_NA_tmean_sm_1km.pkl"             # saved P (SSH, cm^2)
+KARIN_NA_PATH   = f"{PICKLES}/karin_NA_tmean.pkl"                                         # synthetic truth & grids
+HT_ALL_PATH     = f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_0km.pkl"              # saved recon (m) 
+POST_PATH       = f"{PICKLES}/posterior_balanced_extraction_synth_NA_tmean_sm_0km.pkl"    # saved P (SSH, cm^2)
 FIG_OUT         = "cross_track_std.pdf"
 
 # -------------------
@@ -30,6 +29,7 @@ with open(KARIN_NA_PATH, "rb") as f:
 
 with open(HT_ALL_PATH, "rb") as f:
     ht_all_m = pickle.load(f)  # (ntime, ny, nx), meters   
+
 with open(POST_PATH, "rb") as f:
     P = pickle.load(f)         # (ny*nx, ny*nx), cm^2      
 
@@ -37,7 +37,7 @@ with open(POST_PATH, "rb") as f:
 # Pull truth and grid
 # -------------------
 h_truth_all_m = getattr(karin_NA, "ssha_full")   # (ntime, ny, nx), meters  
-h_truth_all_m = h_truth_all_m[:, :, 5:65]
+h_truth_all_m = h_truth_all_m[:, :, 5:64] # crop our truth field to match the SWOT area we start from index 5 and go + 50 + 9 in the gap
 
 xg_m   = getattr(karin_NA, "x_grid")             # (ny, nx), meters
 yg_m   = getattr(karin_NA, "y_grid")             # (ny, nx), meters
@@ -214,10 +214,18 @@ for t in range(ntime):
     diff_zeta_stack[t] = zT - zR
 
 # y-mean of time-stds in desired units
-emp_std_h_cm = np.nanmean(np.nanstd(diff_h_stack_cm, axis=0), axis=0)         # [cm]
-emp_std_u_cs = np.nanmean(np.nanstd(diff_u_stack,     axis=0), axis=0) * 100  # [cm/s]
-emp_std_v_cs = np.nanmean(np.nanstd(diff_v_stack,     axis=0), axis=0) * 100  # [cm/s]
-emp_std_zeta = np.nanmean(np.nanstd(diff_zeta_stack,  axis=0), axis=0)        # [—]
+emp_std_h_cm = np.sqrt(np.nanmean(diff_h_stack_cm**2, axis=(0, 1)))
+emp_std_u_cs = np.sqrt(np.nanmean(diff_u_stack**2, axis=(0,1))) * 100
+emp_std_v_cs = np.sqrt(np.nanmean(diff_v_stack**2, axis=(0,1))) * 100
+emp_std_zeta = np.sqrt(np.nanmean(diff_zeta_stack**2, axis=(0,1)))
+
+print(emp_std_h_cm.shape, emp_std_u_cs.shape, emp_std_v_cs.shape, emp_std_zeta.shape)
+
+# old way
+#emp_std_u_cs = np.nanmean(np.nanstd(diff_u_stack,     axis=0), axis=0) * 100  # [cm/s]
+#emp_std_zeta = np.nanmean(np.nanstd(diff_zeta_stack,  axis=0), axis=0)        # [—]
+#emp_std_v_cs = np.nanmean(np.nanstd(diff_v_stack,     axis=0), axis=0) * 100  # [cm/s]
+#emp_std_h_cm = np.nanmean(np.nanstd(diff_h_stack_cm, axis=0), axis=0)         # [cm]
 
 x_km = xt_km[0, :]
 

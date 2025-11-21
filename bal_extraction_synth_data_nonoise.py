@@ -18,12 +18,12 @@ from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
 # CONFIG
 # =========================
 PICKLES_DIR       = "./pickles"
-KARIN_NA_PATH     = f"{PICKLES_DIR}/karin_NA_tmean_small.pkl"
-NADIR_NA_PATH     = f"{PICKLES_DIR}/nadir_NA_tmean_small.pkl"
-KARIN_PATH        = f"{PICKLES_DIR}/karin_small.pkl"
-NADIR_PATH        = f"{PICKLES_DIR}/nadir_small.pkl"
-RHO_L_KM          = 0.0              # Gaussian spectral taper scale
-COMPUTE_POSTERIOR = False             # toggle posterior on target grid
+KARIN_NA_PATH     = f"{PICKLES_DIR}/karin_NA_tmean.pkl"
+NADIR_NA_PATH     = f"{PICKLES_DIR}/nadir_NA_tmean.pkl"
+KARIN_PATH        = f"{PICKLES_DIR}/karin.pkl"
+NADIR_PATH        = f"{PICKLES_DIR}/nadir.pkl"
+RHO_L_KM          = 1.0              # Gaussian spectral taper scale
+COMPUTE_POSTERIOR = True             # toggle posterior on target grid
 TAPER_CUTOFF      = 2.0              # "T(k)" cutoff
 OUTNAME           = f"balanced_extraction_synth_NA_tmean_sm_{int(RHO_L_KM)}km_nonoise"
 OUT_PREFIX        = f"{PICKLES_DIR}/{OUTNAME}"
