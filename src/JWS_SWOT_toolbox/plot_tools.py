@@ -5,6 +5,7 @@ import JWS_SWOT_toolbox as swot
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cartopy.crs as ccrs
+from matplotlib import rcParams
 
 def plot_grids(karin, nadir):
     
@@ -247,54 +248,13 @@ def plot_swot_sim_maps_and_spectra(
     show: bool = True,
     savepath: str | None = None
 ):
-    """
-    Plot (1) simulation KaRIn+Nadir map, (2) SWOT KaRIn+Nadir map, and (3) power spectra.
 
-    Parameters
-    ----------
-    karin_NA, nadir_NA : objects with fields
-        Simulation objects providing:
-          - ssha[time, ...]
-          - wavenumbers_cpkm (1D), spec_alongtrack_av (1D)
-    NA_karin_lon/lat : 2D arrays
-        Simulation KaRIn lon/lat grids.
-    NA_nadir_lon/lat : 1D arrays
-        Simulation Nadir lon/lat tracks.
-    karin, nadir : objects with fields
-        SWOT objects providing:
-          - lat[time,...], lon[time,...], ssha[time,...] (KaRIn)
-          - lat[time,...], lon[time,...], ssh[time,...]  (Nadir)
-          - wavenumbers_cpkm (1D), spec_alongtrack_av (1D)
-          - karin also: spec_ssh, spec_tmean, spec_tide
-    index : int
-        Time index to plot.
-    vmin, vmax : float
-        Color scale for maps.
-    ylims : tuple
-        Y-limits for log–log PSD plot.
-    cmap : matplotlib colormap or None
-        Defaults to cmocean.balance or 'RdBu_r' if not available.
-    plot_style_fn : callable or None
-        If provided, called at start (e.g., swot.set_plot_style).
-    figsize, dpi : figure sizing
-    show : bool
-        If True, plt.show() at end.
-    savepath : str or None
-        If provided, saves the figure to this path.
-
-    Returns
-    -------
-    fig, axes : (matplotlib.figure.Figure, dict)
-        axes = {"sim": ax0, "swot": ax1, "spec": ax2}
-    """
-    # Optional style hook
     if plot_style_fn is not None:
         try:
             plot_style_fn()
         except Exception:
             pass
 
-    # Colormap default
     if cmap is None:
         try:
             import cmocean
@@ -302,11 +262,9 @@ def plot_swot_sim_maps_and_spectra(
         except Exception:
             cmap = "RdBu_r"
 
-    # Figure & layout
     fig = plt.figure(figsize=figsize, dpi=dpi)
     gs = GridSpec(1, 3, width_ratios=[1, 1, 1.6], figure=fig)
 
-    # ───── (0) Helpers ─────
     def _finite_mask(*arrs):
         m = np.ones_like(np.asarray(arrs[0]).ravel(), dtype=bool)
         for a in arrs:
@@ -314,7 +272,6 @@ def plot_swot_sim_maps_and_spectra(
             m &= np.isfinite(a_flat)
         return m
 
-    # ───── (1) Simulation Map ─────
     ax0 = fig.add_subplot(gs[0, 0], projection=ccrs.PlateCarree())
     sim_k_lon = np.asarray(NA_karin_lon).ravel()
     sim_k_lat = np.asarray(NA_karin_lat).ravel()
@@ -346,7 +303,6 @@ def plot_swot_sim_maps_and_spectra(
     cbar0 = fig.colorbar(sc0, ax=ax0, orientation='vertical', shrink=0.7, pad=0.03)
     cbar0.set_label("SSHA (m)")
 
-    # ───── (2) SWOT Map ─────
     ax1 = fig.add_subplot(gs[0, 1], projection=ccrs.PlateCarree())
     k_lon = np.asarray(karin.lon[index]).ravel()
     k_lat = np.asarray(karin.lat[index]).ravel()
@@ -376,7 +332,6 @@ def plot_swot_sim_maps_and_spectra(
     cbar1 = fig.colorbar(sc1, ax=ax1, orientation='vertical', shrink=0.7, pad=0.03)
     cbar1.set_label("SSHA (m)")
 
-    # ───── (3) Power Spectrum ─────
     ax2 = fig.add_subplot(gs[0, 2])
 
     def _loglog_safe(x, y, label, lw=2):
@@ -386,11 +341,9 @@ def plot_swot_sim_maps_and_spectra(
         if m.any():
             ax2.loglog(x[m], y[m], label=label, linewidth=lw)
 
-    # Simulation spectra
     _loglog_safe(karin_NA.wavenumbers_cpkm, karin_NA.spec_alongtrack_av, "Sim KaRIn SSH", 2)
     _loglog_safe(nadir_NA.wavenumbers_cpkm, nadir_NA.spec_alongtrack_av, "Sim Nadir SSH", 2)
 
-    # SWOT spectra
     _loglog_safe(karin.wavenumbers_cpkm, karin.spec_alongtrack_av, "SWOT KaRIn SSHA", 2)
     _loglog_safe(nadir.wavenumbers_cpkm, nadir.spec_alongtrack_av, "SWOT Nadir SSHA", 2)
     _loglog_safe(karin.wavenumbers_cpkm, getattr(karin, "spec_ssh", np.nan), "SWOT KaRIn SSH", 2.0)
@@ -403,7 +356,6 @@ def plot_swot_sim_maps_and_spectra(
     ax2.grid(True, which='both', linestyle=':', linewidth=0.5)
     ax2.set_title("Power Spectra")
 
-    # Legend outside
     ax2.legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
 
     plt.tight_layout()
@@ -416,13 +368,8 @@ def plot_swot_sim_maps_and_spectra(
 
     return fig, {"sim": ax0, "swot": ax1, "spec": ax2}
 
-import matplotlib.pyplot as plt
-import numpy as np
-import cmocean
-import os
-from matplotlib import rcParams
 
-# Ensure standard plotting settings
+
 rcParams['axes.unicode_minus'] = True
 
 def fmt_minus(x, ndp=1):
@@ -437,9 +384,6 @@ def plot_balanced_extraction(
     outdir="./",
     grid_res_m=2000
 ):
-    """
-    Plots observed SSHA, extracted balanced SSHA, Geostrophic Speed, and Vorticity.
-    """
     if not os.path.exists(outdir):
         os.makedirs(outdir, exist_ok=True)
     

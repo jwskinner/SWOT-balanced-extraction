@@ -20,10 +20,8 @@ def balanced_model(k, A_b, lam, s_param):# for balanced part
     return sp
 
 def balanced_model_tapered(k, A_b, lam, s_param, cutoff=2.0):
-    
     k = np.asarray(k, dtype=float)
     sp = A_b / (1.0 + (lam * k)**s_param) # base balanced spectrum
-
     return sp * taper(k, cutoff)
 
 def matern_spec(k, gm, lam_u):# for unbalanced part
@@ -57,7 +55,7 @@ def unbalanced_model_tapered(k, A_n, lam_n=None, s_n=3.0, cutoff=2.0, k_N=0.25, 
 def unbalanced_model_old(k, A_n, lam_n, s_n, cutoff=2.0):
     '''Model of unbalanced component with a taper at high wavenumbers'''
     sigma = 2 * np.pi * cutoff/np.sqrt(2*np.log(2))
-    lam_n = 1e2  # set to 100km because it is not well constrained 
+    lam_n = 1e2  # set manually to 100km because it is not well constrained 
     taper = np.exp(-sigma**2*k**2/2)
     sp = A_n / (1 + (lam_n * k)**2)**(s_n/2)
     return sp * taper

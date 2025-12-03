@@ -1,4 +1,3 @@
-# script for handling the output of SWOT data and processing
 from datetime import datetime
 import os
 import xarray as xr

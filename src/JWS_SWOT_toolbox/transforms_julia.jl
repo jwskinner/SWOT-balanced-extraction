@@ -1,5 +1,4 @@
-# Script for running the background transforms in Julia  
-
+# Transforms in Julia  
 using FFTW, Interpolations, LinearAlgebra, Printf, ProgressMeter
 using Base.Threads
 FFTW.set_num_threads(Threads.nthreads())
@@ -45,7 +44,6 @@ function iabel(S1, κ)
 end
 
 function cov(S, k)
-
     n = 2*(length(k)-1)
     L = 1/k[2]
     r = (0:n÷2)*L/n

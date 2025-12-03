@@ -1,5 +1,3 @@
-# Contains functions that are about the performance of the insturments 
-
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
