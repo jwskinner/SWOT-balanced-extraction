@@ -8,10 +8,14 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
+        "scipy",
         "xarray",
         "matplotlib",
         "netCDF4",
-        "scipy",
         "xrft",
+        "pandas",
+        "cmocean",
+        "cartopy",
+        "pyproj",
     ],
 )
