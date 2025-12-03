@@ -132,5 +132,9 @@ pickles/
 # Ignore the SWOT data folders 
 SWOT_*/
 
+# Ignore all created movies 
+*.mp4
 
+# Ingnore Scratch 
+scratch/
 
