@@ -2,7 +2,7 @@
 import os, re
 import scipy.io as sio
 from scipy.interpolate import interp1d
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import numpy as np
 import scipy.io as sio
 from datetime import datetime, timedelta

@@ -1,7 +1,7 @@
 import numpy as np
 import os, pickle
 from scipy.sparse.linalg import eigsh
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import h5py

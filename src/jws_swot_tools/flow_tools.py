@@ -1,5 +1,5 @@
 import numpy as np
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 
 
 def compute_geostrophic_velocity(ssh, dx, dy, lat, order = 4, g=9.81, omega=7.2921e-5, eps_f=1e-12):

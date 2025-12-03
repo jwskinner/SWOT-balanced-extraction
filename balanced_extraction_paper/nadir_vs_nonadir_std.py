@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from scipy.linalg import cho_factor, cho_solve, cholesky, block_diag, solve_triangular
 import scipy.linalg as la
 import scipy.sparse as sp
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import pickle
 import os, sys
-from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
+from jws_swot_tools.julia_bridge import julia_functions as jl
 
 CACHE = "nadir_vs_nonadir.pkl"
 

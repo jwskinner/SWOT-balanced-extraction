@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-import JWS_SWOT_toolbox as swot  # must be importable
+import jws_swot_tools as swot  # must be importable
 t = swot.Timer()
 
 PICKLES_DIR = "./pickles"

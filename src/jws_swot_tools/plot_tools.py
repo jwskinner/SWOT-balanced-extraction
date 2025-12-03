@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import cmocean
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cartopy.crs as ccrs

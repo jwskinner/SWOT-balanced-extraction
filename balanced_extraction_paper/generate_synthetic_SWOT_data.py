@@ -1,7 +1,7 @@
 # Estimate the balanced signal for the SWOT data and use to
 # generate synthetic SWOT data based on the signal and noise which we can used for the NA simulation. 
 
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cartopy
@@ -11,7 +11,7 @@ import cmocean
 import xarray as xr 
 import scipy.linalg as la
 import pickle
-from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
+from jws_swot_tools.julia_bridge import julia_functions as jl
 import cartopy.feature as cfeature
  
 # ───── Read and Process Data ─────

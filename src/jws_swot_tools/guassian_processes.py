@@ -6,7 +6,7 @@ from scipy.linalg import cho_factor, cho_solve
 import numpy.linalg as la
 import time
 import numpy as np
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 
 # --- Pairwise distance matrix ---
 def pairwise_r(x0, y0, x1=None, y1=None):

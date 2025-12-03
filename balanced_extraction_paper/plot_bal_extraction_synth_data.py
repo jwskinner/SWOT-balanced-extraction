@@ -9,7 +9,7 @@ import cmocean
 CMAP_BAL = cmocean.cm.balance
 CMAP_CURL = cmocean.cm.curl
 import importlib
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 importlib.reload(swot)
 from scipy.ndimage import gaussian_filter
 

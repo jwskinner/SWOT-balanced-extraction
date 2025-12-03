@@ -2,7 +2,7 @@
 import earthaccess
 import numpy as np
 import xarray as xr
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 
 import earthaccess
 import xarray as xr

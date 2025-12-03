@@ -7,12 +7,12 @@ import pickle
 import numpy as np
 import xarray as xr
 import scipy.linalg as la
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 from scipy.sparse.linalg import eigsh, LinearOperator
 from scipy.linalg import solve_triangular
 from scipy.sparse import issparse
 from scipy.sparse.linalg import eigsh
-from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
+from jws_swot_tools.julia_bridge import julia_functions as jl
 
 # =========================
 # CONFIG

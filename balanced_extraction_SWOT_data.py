@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.linalg as la
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import xarray as xr
-from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
+from jws_swot_tools.julia_bridge import julia_functions as jl
 
 # --------------------------------------------------
 # CONFIG

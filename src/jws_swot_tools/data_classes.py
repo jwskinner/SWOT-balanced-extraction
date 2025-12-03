@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 import xarray as xr
 import xrft
 

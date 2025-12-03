@@ -12,7 +12,7 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 from IPython.display import display, Markdown
-import JWS_SWOT_toolbox as swot
+import jws_swot_tools as swot
 from netCDF4 import num2date
 
 #  ------- Functions for loading and processing SWOT data
