@@ -19,36 +19,6 @@ and the scripts used to create the figures in the above paper are in ```balanced
 
 ---
 
-## Features
-
-- **Balanced SSH Extraction**
-
-  - Gaussian-process reconstruction of SSH
-  - Balanced geostrophic velocities and vorticity
-  - Posterior uncertainties
-  - Noise–balanced spectral separation
-
-- **SWOT KaRIn + Nadir Processing**
-  - File loading and cycle/pass alignment
-  - Geometry tools for KaRIn swath and nadir track
-  - Handling of the nadir gap and cross-track structure
-
-- **Synthetic SWOT Data Generator**
-  - Apply SWOT sampling and noise to a simulation model SSH field
-  - Useful for testing the balanced‐extraction
-
-- **Spectral Modeling**
-  - Balanced and noise spectral component fitting
-  - 1D/2D spectra, cross-spectra, and diagnostics
-
-- **Diagnostics & Utilities**
-  - Derivatives, vorticity, strain, filtering
-  - Plotting tools for SSH, velocity, vorticity, spectra
-  - Scattering-transform utilities
-  - Julia bridge for fast transforms
-
----
-
 
 ## Installation
 
