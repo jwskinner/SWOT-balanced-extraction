@@ -12,8 +12,7 @@ The core functionality is in the Python module:
 src/JWS_SWOT_toolbox/
 ```
 
-and the scripts used to create the figures in the above paper are in ```balanced_extraction_paper/```
-
+and the scripts used to create the figures in the paper are in ```balanced_extraction_paper/```
 
 ---
 
