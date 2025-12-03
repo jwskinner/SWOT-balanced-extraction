@@ -1,13 +1,14 @@
 # Balanced extraction on SWOT KaRIn + Nadir with time loop
 # Reuses geometry and covariance matrices, subsetting per time
 # Units: covariances/obs in [cm], spectra in [cpkm], outputs in [m]
-
 import os
 from datetime import datetime
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.linalg as la
 import JWS_SWOT_toolbox as swot
+import xarray as xr
 from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
 
 # --------------------------------------------------
@@ -16,7 +17,8 @@ from JWS_SWOT_toolbox.julia_bridge import julia_functions as jl
 t = swot.Timer()
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-pass_number = 9
+data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+pass_number = 20
 lat_min = 28
 lat_max = 35
 RHO_L_KM = 0.0  # Gaussian smoothing scale; 0 = no smoothing
@@ -58,6 +60,11 @@ karin.shared_cycles = shared_cycles  # store
 swot.load_nadir_data(nadir_files, lat_min, lat_max, nadir)
 swot.process_nadir_data(nadir)
 
+# remove spatial mean if needed
+# karin_mean_t = np.nanmean(karin.ssha, axis=(1, 2))
+# karin.ssha = karin.ssha - karin_mean_t[:, None, None]
+# nadir.ssha = nadir.ssha - karin_mean_t[:, None]
+
 # Build coordinate grids in [m]
 karin.coordinates()
 nadir.coordinates()
@@ -83,7 +90,7 @@ swot.save_spectral_fit_results(f'{outdir}/spectral_fits.out', p_karin, cov_karin
 t.lap("Spectral fits complete")
 
 # --------------------------------------------------
-# SAVE RAW SWOT DATA (OPTIONAL)
+# SAVE RAW SWOT DATA
 # --------------------------------------------------
 swot.save_swot_to_netcdf(karin, nadir, outdir)
 t.lap("SWOT data saved to NetCDF")
@@ -124,15 +131,20 @@ t.lap("Distance matrices built")
 # --------------------------------------------------
 # COVARIANCE FUNCTIONS WITH TAPER / SMOOTHING
 # --------------------------------------------------
-B_psd = swot.balanced_psd_from_params(p_karin)      # B(k) balanced spectrum model
-Nk_psd = swot.karin_noise_psd_from_params(p_karin)  # N_K(k) noise spectrum model
+B_psd = swot.balanced_psd_from_params(p_karin)                                 # B(k) balanced spectrum model
+Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             # N_K(k) noise spectrum model
 
 sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # [cm]
 
 # Wavenumber grid for transforms
-n_samples = 10000
+n_samples = 100000
 l_sample = 5000
 kk = np.arange(n_samples // 2 + 1) / l_sample  # [cpkm]
+
+dk = kk[1] - kk[0]
+kmax = kk.max()
+print(f"Wavenumber spacing dk = {dk:.6e} cpkm")
+print(f"Maximum wavenumber kmax = {kmax:.6e} cpkm")
 
 rho   = 2 * np.pi * RHO_L_KM
 delta = (np.pi * karin.dx_km) / (2 * np.log(2))
@@ -200,7 +212,7 @@ for t_idx in range(ntimes):
     obs_mask = np.concatenate([mk_t, mn_t])
     n_obs_t = obs_mask.sum()
     if n_obs_t == 0:
-        print(f"Time {t_idx}: no finite KaRIn or Nadir data -> skipping.") # skip if this is a NaN time
+        print(f"Time {t_idx}: no finite KaRIn or Nadir data -> skipping.")      # skip if this is a NaN time
         continue
 
     n_obs_t = obs_mask.sum()
@@ -235,7 +247,7 @@ for t_idx in range(ntimes):
 
     # Posterior mean on target grid
     ht_t = R_t @ z_t                      
-    ht_map_t = (ht_t / 100.0).reshape(nyt, nxt).T   # back to [m], shape (nx, ny)
+    ht_map_t = (ht_t / 100.0).reshape(nyt, nxt).T                              # back to [m], shape (nx, ny)
     ht_all[t_idx] = ht_map_t
 
     # Plot for this time and store geostrophic velocities and vorticity
@@ -249,4 +261,35 @@ for t_idx in range(ntimes):
     swot.save_balanced_step_to_netcdf(outdir,karin, t_idx, ht_map_t, ug, vg, geo_vort, xt, yt)
     t.lap("Step Complete")
 
+# save the output to a netcdf file 
+x_axis = np.arange(nxt)*karin.dx_km
+y_axis = np.arange(nyt)*karin.dy_km
+time_axis = pd.to_datetime(karin.time_dt[:ntimes])
+
+ds = xr.Dataset(
+    data_vars={
+        "ssh_balanced": (("time", "x", "y"), ht_all,    {"units": "m", "description": "Balanced SSH anomaly"}),
+        "ug":           (("time", "x", "y"), ug_all,    {"units": "m/s", "description": "Geostrophic Velocity U"}),
+        "vg":           (("time", "x", "y"), vg_all,    {"units": "m/s", "description": "Geostrophic Velocity V"}),
+        "velocity":     (("time", "x", "y"), vel_all,   {"units": "m/s", "description": "Geostrophic Velocity Magnitude"}),
+        "vorticity":    (("time", "x", "y"), zetag_all, {"units": "1/s", "description": "Geostrophic Relative Vorticity"}),
+    },
+    coords={
+        "time": (("time",), time_axis),
+        "x":    (("x",), x_axis, {"units": "km", "description": "X distance"}),
+        "y":    (("y",), y_axis, {"units": "km", "description": "Y distance"}),
+    },
+    attrs={
+        "title": f"SWOT Balanced Extraction Pass {pass_number}",
+        "smoothing_scale_rho": f"{RHO_L_KM} km",
+        "lat_range": f"{lat_min} to {lat_max}",
+        "creation_date": datetime.now().isoformat(),
+    }
+)
+
+nc_path = os.path.join(outdir, f"Balanced_extraction_Pass{pass_number:03d}.nc")
+
+ds.to_netcdf(nc_path)
+
+print(f"Data saved to: {nc_path}")
 t.lap("Balanced extraction completed for all times")

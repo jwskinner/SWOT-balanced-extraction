@@ -2,6 +2,29 @@ import numpy as np
 import xarray as xr
 import xrft
 
+def get_wavenumbers(spectrum_obj, dim_name):
+    """
+    Extracts and converts wavenumbers from a SWOT spectrum object.
+    """
+    # Extract frequency from the spectrum object (default is cycles/km)
+    freq_attr = f"freq_{dim_name}"
+    k_cpkm = getattr(spectrum_obj, freq_attr)
+    
+    # Calculate conversions
+    k_cpm = k_cpkm / 1000.0             # cycles per meter
+    k_rad_m = k_cpm * 2 * np.pi         # radians per meter
+    
+    with np.errstate(divide='ignore'):
+        k_len = 1 / k_cpkm              # wavelength in km
+
+    return {
+        'ord': k_cpkm,      # Ordinary (cycles/km)
+        'cpkm': k_cpkm,     # Ordinary (cycles/km)
+        'm': k_cpm,         # Ordinary (cycles/m)
+        'ang': k_rad_m,     # Angular (rad/m)
+        'length': k_len     # Wavelength (km)
+    }
+
 def sin2_window_func(n):
     '''sine-squared window function for spectral analysis normalized for unit variance'''
     return np.sqrt(8/3) * np.sin(np.pi * np.arange(n) / n) ** 2

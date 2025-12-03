@@ -86,30 +86,35 @@ ssha_diff = truth_map - bal_map
 
 # -------------------
 # Axes extents (km) — using .T so columns -> x (across-track, dy), rows -> y (along-track, dx)
-extent_full = [0, ny * dy_m * 1e-3, 0, nx * dx_m * 1e-3]
-extent_crop = [0, truth_map.shape[0] * dy_m * 1e-3, 0, truth_map.shape[1] * dx_m * 1e-3]
+dy_km = karin_NA.dy_km  
+dx_km = karin_NA.dx_km
+shift_x = 1.0 * dx_km # we are on half pixels
+
+# Apply shift to the Across-track dimension (indices 0 and 1)
+extent = [0, (ny * dy_km), 0, nx * dx_km + shift_x]
+extent = [0, (ny * dy_km), 0, 119.5]
 
 # -------------------
 # Figure 1: SSHA
 # -------------------
 cmap = CMAP_BAL
 vmin, vmax = -0.5, 0.5  # meters
-fsize = 8
+fsize = 7
 
 cb_kwargs = dict(fraction=0.2, pad=0.01, shrink=0.8)
 
-fig, axs = plt.subplots(4, 1, figsize=(7, 5), sharex=True, dpi=300)
+fig, axs = plt.subplots(4, 1, figsize=(7, 5), sharex=True, dpi=200)
 
 # 1) Synthetic Observation
 im0 = axs[0].imshow(obs_map.T, origin="upper", cmap=cmap, aspect="equal",
-                    extent=extent_full, vmin=vmin, vmax=vmax)
+                    extent=extent, vmin=vmin, vmax=vmax)
 
 ynn = nadir_NA.y_grid.ravel()*1e-3
 axs[0].scatter(
-    ynn,               # Along-track (x direction)
-    np.full_like(ynn, 60),   # Across-track: all at midline of swath
+    ynn,                       # Along-track (x direction)
+    np.full_like(ynn, 59.5),   # Across-track: all at midline of swath on the half grid
     c=nadir_NA.ssh_noisy[INDEX],
-    s=4, cmap=cmap,
+    s=2, cmap=cmap,
     edgecolor="none",
     vmin=vmin, vmax=vmax,
     zorder=3
@@ -121,7 +126,7 @@ cbar.set_label(r"$h$ [m]", size=fsize)
 
 # 2) Balanced Extraction
 im1 = axs[1].imshow(bal_map.T, origin="upper", cmap=cmap, aspect="equal",
-                    extent=extent_full, vmin=vmin, vmax=vmax)
+                    extent=extent, vmin=vmin, vmax=vmax)
 axs[1].set_title("Balanced Extraction", fontsize=fsize)
 cbar = fig.colorbar(im1, ax=axs[1], **cb_kwargs)
 cbar.ax.tick_params(labelsize=fsize)
@@ -129,7 +134,7 @@ cbar.set_label(r"$h$ [m]", size=fsize)
 
 # 3) NA Simulation 
 im2 = axs[2].imshow(truth_map.T, origin="upper", cmap=cmap, aspect="equal",
-                    extent=extent_crop, vmin=vmin, vmax=vmax)
+                    extent=extent, vmin=vmin, vmax=vmax)
 axs[2].set_title("Simulation", fontsize=fsize)
 cbar = fig.colorbar(im2, ax=axs[2], **cb_kwargs)
 cbar.ax.tick_params(labelsize=fsize)
@@ -137,10 +142,10 @@ cbar.set_label(r"$h$ [m]", size=fsize)
 
 # 4) Difference (truth - balanced) 
 im3 = axs[3].imshow(ssha_diff.T*100, origin="upper", cmap="RdGy", aspect="equal",
-                    extent=extent_crop, vmin=10 * vmin, vmax=10 * vmax)
+                    extent=extent, vmin=10 * vmin, vmax=10 * vmax)
 axs[3].set_title(r"Simulation $-$ Balanced Extraction", fontsize=fsize)
 cbar = fig.colorbar(im3, ax=axs[3], **cb_kwargs)
-cbar.set_label(r"$\Delta$ h [cm]", size=fsize)
+cbar.set_label(r"$\Delta h$ [cm]", size=fsize)
 cbar.ax.tick_params(labelsize=fsize)
 cbar.update_ticks()
 
@@ -174,11 +179,11 @@ obs_filled = fill_nans_rowwise(obs_map)
 h_truth_map = gaussian_filter(truth_map, sigma=0.0)  # no smoothing by default
 
 # Geostrophic velocities (dx,dy in meters; lats length ny)
-ug_obs, vg_obs, g_obs = swot.compute_geostrophic_velocity(obs_filled, dx_m, dy_m, lats_1d)
+ug_obs, vg_obs, g_obs = swot.compute_geostrophic_velocity(obs_filled, dx_m, dy_m, lats_1d, order = 2)
 g_obs[nan_mask] = np.nan
 
-ug_recon, vg_recon, g_recon = swot.compute_geostrophic_velocity(bal_map, dx_m, dy_m, lats_1d)
-ug_truth, vg_truth, g_truth = swot.compute_geostrophic_velocity(h_truth_map, dx_m, dy_m, lats_1d)
+ug_recon, vg_recon, g_recon = swot.compute_geostrophic_velocity(bal_map, dx_m, dy_m, lats_1d, order = 2)
+ug_truth, vg_truth, g_truth = swot.compute_geostrophic_velocity(h_truth_map, dx_m, dy_m, lats_1d, order = 2)
 
 
 # Difference magnitude
@@ -186,13 +191,12 @@ g_diff_mag = np.sqrt((ug_truth - ug_recon) ** 2 + (vg_truth - vg_recon) ** 2)
 
 # Plot
 cmap_speed = "YlGnBu_r"
-extent_speed = [0, nyt * dy_m * 1e-3, 0, nxt * dx_m * 1e-3]
 
 fig, axs = plt.subplots(4, 1, figsize=(7, 5), sharex=True, dpi=300)
 
 # Panel 1: Observation speed
 im0 = axs[0].imshow(g_obs.T, origin="upper", cmap=cmap_speed, aspect="equal",
-                    extent=extent_speed, vmin=0, vmax=2.0)
+                    extent=extent, vmin=0, vmax=2.0)
 axs[0].set_title("Synthetic Observation", fontsize=fsize)
 cbar = fig.colorbar(im0, ax=axs[0], **cb_kwargs)
 cbar.ax.tick_params(labelsize=fsize)
@@ -200,7 +204,7 @@ cbar.set_label(r"$|{\bf u}_g|$ [m s$^{-1}$]", size=fsize)
 
 # Panel 2: Recovered speed (cropped extent for consistency with truth)
 im1 = axs[1].imshow(g_recon.T, origin="upper", cmap=cmap_speed, aspect="equal",
-                    extent=[0, g_recon.shape[0] * dy_m * 1e-3, 0, g_recon.shape[1] * dx_m * 1e-3],
+                    extent=extent,
                     vmin=0, vmax=2.0)
 axs[1].set_title("Balanced Extraction", fontsize=fsize)
 cbar = fig.colorbar(im1, ax=axs[1], **cb_kwargs)
@@ -209,7 +213,7 @@ cbar.set_label(r"$|{\bf u}_g|$ [m s$^{-1}$]", size=fsize)
 
 # Panel 3: Truth speed (cropped)
 im2 = axs[2].imshow(g_truth.T, origin="upper", cmap=cmap_speed, aspect="equal",
-                    extent=[0, g_truth.shape[0] * dy_m * 1e-3, 0, g_truth.shape[1] * dx_m * 1e-3],
+                    extent=extent,
                     vmin=0, vmax=2.0)
 axs[2].set_title("Simulation", fontsize=fsize)
 cbar = fig.colorbar(im2, ax=axs[2], **cb_kwargs)
@@ -218,12 +222,13 @@ cbar.set_label(r"$|{\bf u}_g|$ [m s$^{-1}$]", size=fsize)
 
 # Panel 4: Difference magnitude
 im3 = axs[3].imshow(np.abs(g_diff_mag).T, origin="upper", cmap=cmap_speed, aspect="equal",
-                    extent=[0, g_truth.shape[0] * dy_m * 1e-3, 0, g_truth.shape[1] * dx_m * 1e-3],
+                    extent=extent,
                     vmin=0, vmax=0.5)
 axs[3].set_title(r"Difference Magnitude $|\Delta {\bf u}_g|$", fontsize=fsize)
 cbar = fig.colorbar(im3, ax=axs[3], **cb_kwargs)
 cbar.set_label(r"$|\Delta {\bf u}_g|$ [m s$^{-1}$]", size=fsize)
 cbar.ax.tick_params(labelsize=fsize)
+cbar.set_ticks([0, 0.25, 0.5])
 cbar.formatter = mticker.FuncFormatter(lambda x, _: f"{x:.1f}")
 cbar.update_ticks()
 
@@ -247,11 +252,12 @@ plt.close(fig)
 # Figure 3: Geostrophic vorticity ζ/f
 # -------------------
 # Compute vorticities (use meters for dx/dy; expects lats length ny)
-vort_obs = swot.compute_geostrophic_vorticity(obs_filled, dx_m, dy_m, lats_1d)
+fsize = 8 # bit larger because more panels
+vort_obs = swot.compute_geostrophic_vorticity(obs_filled, dx_m, dy_m, lats_1d, order = 2)
 vort_obs[nan_mask] = np.nan
 
-vort_recon = swot.compute_geostrophic_vorticity(bal_map, dx_m, dy_m, lats_1d)
-vort_truth = swot.compute_geostrophic_vorticity(truth_map, dx_m, dy_m, lats_1d)
+vort_recon = swot.compute_geostrophic_vorticity(bal_map, dx_m, dy_m, lats_1d, order = 2)
+vort_truth = swot.compute_geostrophic_vorticity(truth_map, dx_m, dy_m, lats_1d, order = 2)
 
 vort_diff = vort_truth - vort_recon
 
@@ -269,55 +275,66 @@ vort_recon_gf = gaussian_filter(vort_recon, sigma=(sigma_y, sigma_x), mode="near
 # Plot
 cmap_vort = CMAP_CURL
 vmin_v, vmax_v = -1.0, 1.0  # ζ/f range
-extent_vort_full = [0, nyt * dy_m * 1e-3, 0, nxt * dx_m * 1e-3]
-extent_vort_crop = [0, vort_truth.shape[0] * dy_m * 1e-3, 0, vort_truth.shape[1] * dx_m * 1e-3]
 
 fig, axs = plt.subplots(7, 1, figsize=(8, 9), sharex=True, dpi=300)
 
-
 # 1) Noisy 
 im0 = axs[0].imshow(vort_obs.T, origin="upper", cmap=cmap_vort, aspect="equal",
-                    extent=extent_vort_full, vmin=10*vmin_v, vmax=10*vmax_v)
+                    extent=extent, vmin=10*vmin_v, vmax=10*vmax_v)
 axs[0].set_title("Synthetic Observation", fontsize=fsize)
-fig.colorbar(im0, ax=axs[0], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im0, ax=axs[0], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 # 2) Balanced (full)
 im1 = axs[1].imshow(vort_recon.T, origin="upper", cmap=cmap_vort, aspect="equal",
-                    extent=extent_vort_full, vmin=vmin_v, vmax=vmax_v)
+                    extent=extent, vmin=vmin_v, vmax=vmax_v)
 axs[1].set_title("Balanced Extraction", fontsize=fsize)
-fig.colorbar(im1, ax=axs[1], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im1, ax=axs[1], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 # 3) Truth
 im3 = axs[2].imshow(vort_truth.T, origin="upper", cmap=cmap_vort, aspect="equal",
-                    extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
+                    extent=extent, vmin=vmin_v, vmax=vmax_v)
 axs[2].set_title("Simulation", fontsize=fsize)
-fig.colorbar(im3, ax=axs[2], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im3, ax=axs[2], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 # 4) Difference
 im4 = axs[3].imshow(vort_diff.T, origin="upper", cmap="RdGy", aspect="equal",
-                    extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
+                    extent=extent, vmin=vmin_v, vmax=vmax_v)
 axs[3].set_title(r"Simulation $−$ Balanced Extraction", fontsize=fsize)
-fig.colorbar(im4, ax=axs[3], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im4, ax=axs[3], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 # 5) Balanced filtered
 im2 = axs[4].imshow(vort_recon_gf.T, origin="upper", cmap=cmap_vort, aspect="equal",
-                    extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
+                    extent=extent, vmin=vmin_v, vmax=vmax_v)
 axs[4].set_title("Balanced Extraction Filtered", fontsize=fsize)
-fig.colorbar(im2, ax=axs[4], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im2, ax=axs[4], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 # 6) Truth filtered
 im2 = axs[5].imshow(vort_truth_gf.T, origin="upper", cmap=cmap_vort, aspect="equal",
-                    extent=extent_vort_crop, vmin=vmin_v, vmax=vmax_v)
+                    extent=extent, vmin=vmin_v, vmax=vmax_v)
 axs[5].set_title("Simulation Filtered", fontsize=fsize)
-fig.colorbar(im2, ax=axs[5], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im2, ax=axs[5], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 
 # 7) Difference filtered
 im4 = axs[6].imshow(vort_truth_gf.T - vort_recon_gf.T, origin="upper", cmap="RdGy",
-                    aspect="equal", extent=extent_vort_crop,
+                    aspect="equal", extent=extent,
                     vmin=vmin_v, vmax=vmax_v)
 axs[6].set_title(r"Simulation Filtered $−$ Balanced Extraction Filtered", fontsize=fsize)
-fig.colorbar(im4, ax=axs[6], **cb_kwargs).set_label(r"$\zeta_g/f$")
+cbar = fig.colorbar(im4, ax=axs[6], **cb_kwargs)
+cbar.set_label(r"$\zeta_g/f$", size=fsize)
+cbar.ax.tick_params(labelsize=fsize)
 
 # Labels (a–e)
 for lab, ax in zip(["(a)", "(b)", "(c)", "(d)", "(e)", "(f)", "(g)"], axs):
@@ -341,3 +358,4 @@ print()
 print("RMS(ΔSSHA) =", np.sqrt(np.nanmean(ssha_diff**2)))
 print("RMS(|Δu_g|) =", np.sqrt(np.nanmean(g_diff_mag**2)))
 print("RMS(Δζ/f) =", np.sqrt(np.nanmean(vort_diff**2)))
+print("RMS Filt (Δζ/f) =", np.sqrt(np.nanmean(vort_truth_gf.T**2 - vort_recon_gf.T**2)))

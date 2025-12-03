@@ -2,9 +2,9 @@ import numpy as np
 import JWS_SWOT_toolbox as swot
 
 
-def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_f=1e-12):
+def compute_geostrophic_velocity(ssh, dx, dy, lat, order = 4, g=9.81, omega=7.2921e-5, eps_f=1e-12):
     """
-    Computes geostrophic velocity using 4th-order finite differences for the SSH gradient.
+    Computes geostrophic velocity using nth-order finite differences for the SSH gradient.
     
     """
     ssh = np.asarray(ssh, dtype=float)
@@ -27,7 +27,10 @@ def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_
     f = np.where(np.abs(f) < eps_f, np.sign(f) * eps_f + eps_f, f)
 
     # Compute SSH gradients using 4th-order accurate stencils everywhere
-    dssh_dx, dssh_dy = swot.compute_gradient_4th_order(ssh, dx, dy)
+    if order == 4: 
+        dssh_dx, dssh_dy = swot.compute_gradient_4th_order(ssh, dx, dy)
+    else: 
+        dssh_dx, dssh_dy = swot.compute_gradient_2nd_order(ssh, dx, dy)
 
     # Geostrophic velocities
     u_geo = -(g / f) * dssh_dy  # Zonal / across-track velocity
@@ -76,39 +79,39 @@ def spatial_mean(anom, dims):
     '''returns spatial mean over specified dimensions'''
     return anom.mean(dim=dims, skipna=True)
 
-def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_f=1e-12):
+# def compute_geostrophic_velocity(ssh, dx, dy, lat, g=9.81, omega=7.2921e-5, eps_f=1e-12):
  
-    ssh = np.asarray(ssh, dtype=float)
-    M, N = ssh.shape
+#     ssh = np.asarray(ssh, dtype=float)
+#     M, N = ssh.shape
 
-    # latitude handling
-    lat = np.asarray(lat)
-    if lat.ndim == 0:               # scalar
-        lat_row = np.full(M, float(lat))
-    elif lat.ndim == 1 and lat.shape[0] == M:   # per-row
-        lat_row = lat
-    else:
-        raise ValueError(f"lat must be scalar or 1D of length {M}")
+#     # latitude handling
+#     lat = np.asarray(lat)
+#     if lat.ndim == 0:               # scalar
+#         lat_row = np.full(M, float(lat))
+#     elif lat.ndim == 1 and lat.shape[0] == M:   # per-row
+#         lat_row = lat
+#     else:
+#         raise ValueError(f"lat must be scalar or 1D of length {M}")
 
-    lat_rad = np.deg2rad(lat_row)
-    f = 2 * omega * np.sin(lat_rad)[:, None]  # shape (M,1)
-    f = np.where(np.abs(f) < eps_f, np.sign(f) * eps_f + eps_f, f)
+#     lat_rad = np.deg2rad(lat_row)
+#     f = 2 * omega * np.sin(lat_rad)[:, None]  # shape (M,1)
+#     f = np.where(np.abs(f) < eps_f, np.sign(f) * eps_f + eps_f, f)
 
-    # derivatives: centered differences
-    dssh_dx = np.zeros_like(ssh)
-    dssh_dx[:, 1:-1] = (ssh[:, 2:] - ssh[:, :-2]) / (2 * dx)
-    dssh_dx[:, 0] = (ssh[:, 1] - ssh[:, 0]) / dx
-    dssh_dx[:, -1] = (ssh[:, -1] - ssh[:, -2]) / dx
+#     # derivatives: centered differences
+#     dssh_dx = np.zeros_like(ssh)
+#     dssh_dx[:, 1:-1] = (ssh[:, 2:] - ssh[:, :-2]) / (2 * dx)
+#     dssh_dx[:, 0] = (ssh[:, 1] - ssh[:, 0]) / dx
+#     dssh_dx[:, -1] = (ssh[:, -1] - ssh[:, -2]) / dx
 
-    dssh_dy = np.zeros_like(ssh)
-    dssh_dy[1:-1, :] = (ssh[2:, :] - ssh[:-2, :]) / (2 * dy)
-    dssh_dy[0, :] = (ssh[1, :] - ssh[0, :]) / dy
-    dssh_dy[-1, :] = (ssh[-1, :] - ssh[-2, :]) / dy
+#     dssh_dy = np.zeros_like(ssh)
+#     dssh_dy[1:-1, :] = (ssh[2:, :] - ssh[:-2, :]) / (2 * dy)
+#     dssh_dy[0, :] = (ssh[1, :] - ssh[0, :]) / dy
+#     dssh_dy[-1, :] = (ssh[-1, :] - ssh[-2, :]) / dy
 
-    # geostrophic velocities
-    u_geo = - (g / f) * dssh_dy   # zonal / across-track
-    v_geo =   (g / f) * dssh_dx   # meridional / along-track
-    speed = np.sqrt(u_geo**2 + v_geo**2)
+#     # geostrophic velocities
+#     u_geo = - (g / f) * dssh_dy   # zonal / across-track
+#     v_geo =   (g / f) * dssh_dx   # meridional / along-track
+#     speed = np.sqrt(u_geo**2 + v_geo**2)
 
-    return u_geo, v_geo, speed
+#     return u_geo, v_geo, speed
 

@@ -35,7 +35,6 @@ class KarinData:
     def coordinates(self):
         # Convert the lats and lons to a grid in km
         self.x_km, self.y_km = swot.convert_to_xy_grid(self) # returns the euclidian grid spacing in km from the lat/lon coordinates
-        
         x_min, x_max = np.nanmin(self.x_km), np.nanmax(self.x_km)
         y_min, y_max = np.nanmin(self.y_km), np.nanmax(self.y_km)
 
@@ -92,12 +91,15 @@ class KarinData:
         """Computes all power spectra for the Karin data."""
         print("Computing KaRIn spectra...")
         
-        # 1. window and coordinates
-        self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['line'])
-        k_coords = [self.y_coord_km, self.x_coord_km] # do spectra in cpkm
-        kt_coords = [self.t_coord, self.y_coord_km, self.x_coord_km] # do spectra in cpkm
+        # 1. dims, window and coordinates
+        dim_name = 'line' # along-track
+        avg_dims = ['sample', 'pixel'] # Dimensions to average over: Time, Cross-track
+        self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=[dim_name]) #spectrum window function
+        
+        k_coords = [self.y_coord_km, self.x_coord_km] 
+        kt_coords = [self.t_coord, self.y_coord_km, self.x_coord_km] 
 
-        # 2. Create xarrays for analysis, we do the spectra in cm so the output is cm/cpkm
+        # 2. Create xarrays for analysis, we do the spectra in cm so the output is [cm/cpkm]
         karin_ssh = xr.DataArray(self.ssh*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
         karin_ssha = xr.DataArray(self.ssha*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
         
@@ -106,30 +108,35 @@ class KarinData:
             self.spec_tmean = swot.mean_power_spectrum(karin_mean, self.window, 'line', ['pixel'])
         
         if hasattr(self, 'ssh_mean_highpass') and self.ssh_mean_highpass is not None:
-            karin_mean_filtered = xr.DataArray(self.ssha_mean_highpass*100, coords=k_coords, dims=['line', 'pixel'])
+            karin_mean_filtered = xr.DataArray(self.ssh_mean_highpass*100, coords=k_coords, dims=['line', 'pixel'])
             self.spec_filt_tmean = swot.mean_power_spectrum(karin_mean_filtered, self.window, 'line', ['pixel'])
         
         if hasattr(self, 'tide') and self.tide is not None:
             karin_tide = xr.DataArray(self.tide*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
             self.spec_tide = swot.mean_power_spectrum(karin_tide, self.window, 'line', ['sample', 'pixel'])
         
-        # 3. Remove spatial mean for anomaly spectra
+        # 3. compute and remove spatial mean for anomaly 
         karin_spatial_mean = swot.spatial_mean(karin_ssha, ['line', 'pixel'])
         karin_anomsp = karin_ssha - karin_spatial_mean
 
-        # 4. Perform spectral analysis using the object's own data
-        self.spec_ssh = swot.mean_power_spectrum(karin_ssh, self.window, 'line', ['sample', 'pixel'])
-        self.spec_ssha = swot.mean_power_spectrum(karin_ssha, self.window, 'line', ['sample', 'pixel'])
-        self.spec_alongtrack_av = swot.mean_power_spectrum(karin_anomsp, self.window, 'line', ['sample', 'pixel'])
-        self.spec_alongtrack_ins = swot.mean_power_spectrum(karin_anomsp, self.window, 'line', ['pixel'])
-        self.spec_alongtrack_time_av = swot.mean_power_spectrum(karin_anomsp, self.window, 'line', ['sample'])
+        # 4. Across-Track and Time-averaged spectra 
+        self.spec_ssh = swot.mean_power_spectrum(karin_ssh, self.window, dim_name, avg_dims)
+        self.spec_ssha = swot.mean_power_spectrum(karin_ssha, self.window, dim_name, avg_dims)
+        self.spec_alongtrack_av = swot.mean_power_spectrum(karin_anomsp, self.window, dim_name, avg_dims)
+
+        # 5. Across-Track Averaged Instantaneous Spectra
+        self.spec_alongtrack_ins = swot.mean_power_spectrum(karin_anomsp, self.window, dim_name, ['pixel'])
+
+        # 6. Time-Averaged Across-Track Spectra
+        self.spec_alongtrack_time_av = swot.mean_power_spectrum(karin_anomsp, self.window, dim_name, ['sample'])
 
         # 5. Store wavenumbers in various useful forms 
-        self.wavenumbers_ord = self.spec_alongtrack_ins.freq_line        # ordinary wavenumbers in cycles/m
-        self.wavenumbers_m = self.wavenumbers_ord * 1e3                  # we default to using the ordinary wavenumbers
-        self.wavenumbers_cpkm = self.wavenumbers_ord                     # cycles/km
-        self.wavenumbers_ang = self.wavenumbers_cpkm * 2 * np.pi         # angular wavenumbers in rads/m
-        self.wavenumbers_length = 1 / self.wavenumbers_ord               # lengths in km
+        waves = swot.get_wavenumbers(self.spec_alongtrack_ins, dim_name)
+        self.wavenumbers_ord = waves['ord']
+        self.wavenumbers_m = waves['m']
+        self.wavenumbers_cpkm = waves['cpkm']
+        self.wavenumbers_ang = waves['ang']
+        self.wavenumbers_length = waves['length']
 
 class NadirData:
     def __init__(self, num_cycles, track_length_nadir, lat_min, lat_max, pass_number):
@@ -158,8 +165,8 @@ class NadirData:
         self.dy = self.dy_km * 1.0e3 # Convert to meters
         print(f"Nadir spacing: dy = {self.dy_km:.2f} km")
 
-        y_idx = np.arange(self.track_length) + 0.5
-        self.y_coord = self.dy * y_idx
+        y_idx = np.arange(self.track_length) + 0.5 # include the extra pixel from half-grid shift
+        self.y_coord = self.dy * y_idx 
         self.y_coord_km = self.y_coord * 1e-3
         
         center_x_position = (self.karin.total_width * self.karin.dx) / 2.0
@@ -172,8 +179,11 @@ class NadirData:
     def compute_spectra(self):
         """Computes all power spectra for the Nadir data."""
         print("Computing Nadir spectra...")
+        
         # 1. window and coordinates
-        self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=['nadir_line'])
+        dim_name = 'nadir_line'
+        avg_dims = ['sample']
+        self.window = xr.DataArray(swot.sin2_window_func(self.track_length), dims=dim_name)
         nt_coords = [self.t_coord, self.y_coord_km]
         
         # 2. Create xarrays for analysis in cm^2/cpkm
@@ -185,19 +195,20 @@ class NadirData:
         nadir_anomsp = nadir_ssh - nadir_spatial_mean
         nadir_anomspa = nadir_ssha - nadir_spatial_mean
 
-        # 4. Perform spectral analysis
-        self.spec_ssh = swot.mean_power_spectrum(nadir_ssh, self.window, 'nadir_line', ['sample'])
-        self.spec_ssha = swot.mean_power_spectrum(nadir_ssha, self.window, 'nadir_line', ['sample'])
-        self.spec_alongtrack_av = swot.mean_power_spectrum(nadir_anomsp, self.window, 'nadir_line', ['sample'])
-        self.spec_alongtrack_ava = swot.mean_power_spectrum(nadir_anomspa, self.window, 'nadir_line', ['sample'])
-        self.spec_alongtrack_ins = swot.mean_power_spectrum(nadir_anomsp, self.window, 'nadir_line', [])
+        # 4. Time and Across-Track Av. SSH and SSHA spectra
+        self.spec_ssh = swot.mean_power_spectrum(nadir_ssh, self.window, dim_name, avg_dims)
+        self.spec_ssha = swot.mean_power_spectrum(nadir_ssha, self.window, dim_name, avg_dims)
+        self.spec_alongtrack_av = swot.mean_power_spectrum(nadir_anomsp, self.window, dim_name, avg_dims)
+        self.spec_alongtrack_ava = swot.mean_power_spectrum(nadir_anomspa, self.window, dim_name, avg_dims)
+        self.spec_alongtrack_ins = swot.mean_power_spectrum(nadir_anomsp, self.window, dim_name, [])
         
         # 5. Store wavenumbers in various useful forms 
-        self.wavenumbers_ord = self.spec_alongtrack_ins.freq_nadir_line  # ordinary wavenumbers in cycles/m
-        self.wavenumbers_m = self.wavenumbers_ord * 1e3                  # ordinary wavenumbers
-        self.wavenumbers_cpkm = self.wavenumbers_ord                     # cycles/km
-        self.wavenumbers_ang = self.wavenumbers_cpkm * 2 * np.pi         # angular wavenumbers in rads/m
-        self.wavenumbers_length = 1 / self.wavenumbers_ord               # lengths in km
+        waves = swot.get_wavenumbers(self.spec_alongtrack_ins, dim_name)
+        self.wavenumbers_ord = waves['ord']
+        self.wavenumbers_m = waves['m']
+        self.wavenumbers_cpkm = waves['cpkm']
+        self.wavenumbers_ang = waves['ang']
+        self.wavenumbers_length = waves['length']
         
 
 def init_swot_arrays(dims, lat_min, lat_max, pass_number):
@@ -206,28 +217,3 @@ def init_swot_arrays(dims, lat_min, lat_max, pass_number):
     nadir = NadirData(ncycles, track_length_nadir, lat_min, lat_max, pass_number)
     nadir.karin = karin
     return karin, nadir
-
-def plot_grids(karin, nadir):
-    
-    plt.figure()
-    plt.scatter(nadir.x_km, nadir.y_km, s=1)
-    plt.scatter(karin.x_km, karin.y_km, s=1)
-
-    # Create the scatter plot
-    plt.figure(figsize=(8, 10))
-    plt.scatter(karin.x_obs_grid*1e-3, karin.y_obs_grid*1e-3, s=1, alpha=0.9)
-    plt.scatter(karin.x_grid*1e-3, karin.y_grid*1e-3, s=1, alpha=0.1)
-    plt.scatter(nadir.x_grid*1e-3, nadir.y_grid*1e-3, s=1, alpha=1.0)
-
-    # Add labels and a title for clarity
-    plt.title('Scatter Plot of Synthetic Grid Coordinates')
-    plt.xlabel('Cross-Track Distance (km)')
-    plt.ylabel('Along-Track Distance (km)')
-
-    # Add grid lines and ensure correct aspect ratio
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.axis('equal')
-
-    # Display the plot
-    plt.tight_layout()
-    plt.show()

@@ -143,7 +143,6 @@ def save_swot_to_netcdf(karin, nadir, outdir):
     # Filter out None values
     final_vars = {k: v for k, v in data_vars.items() if v[1] is not None}
 
-    # 4. Construct Dataset with 'time' as the main coordinate
     coords = {
         "time": time_coords  
     }
@@ -250,8 +249,8 @@ def save_balanced_step_to_netcdf(outfolder, karin, t_idx, ht_map_t, ug, vg, zeta
     ds = xr.Dataset(
         coords={
             "time": ("time", time_val),
-            "x": ("x", np.arange(nxt)),
-            "y": ("y", np.arange(nyt)),
+            "x": ("x", np.arange(nxt)*karin.dx_km),
+            "y": ("y", np.arange(nyt)*karin.dy_km),
             "x_km": (("x", "y"), x2d),
             "y_km": (("x", "y"), y2d),
         },
