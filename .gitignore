@@ -128,6 +128,7 @@ job_slurm_batch
 # Ignore pickle files
 *.pkl
 pickles/
+pickles
 
 # Ignore the SWOT data folders 
 SWOT_*/
