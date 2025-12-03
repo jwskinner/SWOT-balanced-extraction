@@ -47,7 +47,7 @@ nadir.compute_spectra()
 
 karin.shared_cycles = shared_cycles # save
 
-#  Match the simulation dates with the SWOT dates, we do both NA sim and butterworth filter
+#  Match the simulation dates with the SWOT dates
 NA_folder = "/expanse/lustre/projects/cit197/jskinner1/NA_daily_snapshots"
 
 # 1) choose sim dates for KaRIn times
@@ -66,7 +66,7 @@ NA_karin_full_ssh, NA_karin_ssh, NA_nadir_ssh, used_dates = swot.load_sim_on_kar
     matched_dates=matched_dates 
 )
 
-# Now the data is processed we can init all out data classes with NA_Karin/Nadir
+# Now the data is processed we can init new data classes with NA_Karin/Nadir
 ncycles = NA_karin_ssh.shape[0]
 track_length_karin =  NA_karin_ssh.shape[1]
 track_length_nadir = NA_nadir_ssh.shape[1]
@@ -182,6 +182,7 @@ nadir_NA.ssh_noisy = ssh_nadir_noisy
 karin_NA.poptcwg_karin = p_karin
 karin.poptcwg_karin = p_karin
 
+# save the synthetic SWOT data to pickle file
 with open("./pickles/karin_NA_tmean.pkl", "wb") as f:
    pickle.dump(karin_NA, f)
 
@@ -197,7 +198,7 @@ with open("./pickles/karin.pkl", "wb") as f:
 print("Saved")
 
 # --------------------
-# Figure 1: Fields (three maps)
+# Paper Fig. 6 a): Three field maps
 # --------------------
 
 index = 40
@@ -287,7 +288,7 @@ fig1.savefig('synthetic_swot_fields.pdf', bbox_inches='tight')
 print("plotted")
 
 # --------------------
-# Spectrum Figure
+# Paper Fig. 6 b) Power spectrum
 # --------------------
 
 # Build xarray wrappers and compute spectra (convert to cm for PSD units)

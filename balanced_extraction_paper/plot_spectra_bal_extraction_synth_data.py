@@ -1,4 +1,5 @@
 # Plots the spectrum of the balanced extraction on the synthetic data
+# Fig. 6 c) in balanced extraction paper. 
 import pickle
 import numpy as np
 import xarray as xr

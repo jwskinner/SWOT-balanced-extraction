@@ -1,3 +1,5 @@
+# Imports the simulation data in the atlantic and overlays the SWOT pass tracks. 
+# for Fig. 2 of balanced extraction paper.
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -16,11 +18,6 @@ R_earth = 6371000.0           # m
 
 # --- finite-difference geostrophic computation ---
 def geostrophic_from_ssh(ssh, lon_grid, lat_grid):
-    """
-    ssh: 2D array with shape (nlat, nlon) corresponding to lat_grid (1D) and lon_grid (1D).
-    lon_grid, lat_grid: 1D arrays in degrees.
-    Returns: u (eastward), v (northward), speed (m/s) arrays same shape as ssh.
-    """
     # ensure arrays
     ssh = np.array(ssh)
     lon_grid = np.array(lon_grid)
@@ -79,7 +76,7 @@ def geostrophic_from_ssh(ssh, lon_grid, lat_grid):
 
 # -------------------------
 # === Load pass coordinates (unchanged) ===
-with open("SWOT_pass_coordinates.pkl", "rb") as f:
+with open("../SWOT_pass_coordinates.pkl", "rb") as f:
     pass_coords = pickle.load(f)
 
 print(f"Loaded {len(pass_coords)} passes.")
@@ -229,6 +226,5 @@ gl.top_labels = gl.right_labels = False
 # === Colorbar and quiver key ===
 cbar = plt.colorbar(speed_plot, ax=ax, orientation='horizontal', shrink=0.3, pad=0.05)
 cbar.set_label(r'Geostrophic speed [m s$^{-1}$]')
-
 plt.savefig('NA_geostrophic_velocity.pdf', dpi=300, bbox_inches='tight')
 plt.tight_layout()

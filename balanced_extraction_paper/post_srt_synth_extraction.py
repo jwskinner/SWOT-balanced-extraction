@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
+Computes and plots Fig. 8 in the balanced extraction paper. 
 Read saved posterior P and reconstructed fields (ht_all), then compare:
 - Posterior std (theory) vs Empirical std over time (truth - recon)
 for SSH [cm], u_g, v_g [cm/s], and zeta/f [—], as 1D across-track (y-mean) profiles.

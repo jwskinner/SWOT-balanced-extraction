@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# SWOT KaRIn + Nadir extraction, posterior variance, and 1D across-track profiles
+# Computes the extraction for each of the KaRIn and nadir instruments independently and combined and plots Fig. 4. 
 
 import numpy as np
 import matplotlib.pyplot as plt

@@ -74,7 +74,7 @@ t.lap("Spectral fits done")
 # -------------------------
 # Geometry & masks
 # -------------------------
-#index = 2 # can be anything, just for masks
+#index = 2 
 # mask_k = np.isfinite(karin.ssha[index])
 # mask_n = np.isfinite(nadir.ssh[index]).ravel()
 

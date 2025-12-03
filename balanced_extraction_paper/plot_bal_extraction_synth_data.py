@@ -95,7 +95,7 @@ extent = [0, (ny * dy_km), 0, nx * dx_km + shift_x]
 extent = [0, (ny * dy_km), 0, 119.5]
 
 # -------------------
-# Figure 1: SSHA
+# Paper Fig. 7: SSHA
 # -------------------
 cmap = CMAP_BAL
 vmin, vmax = -0.5, 0.5  # meters
@@ -169,7 +169,7 @@ print("Saved ssh_extraction.pdf")
 plt.close(fig)
 
 # -------------------
-# Figure 2: Geostrophic speed |u_g|
+# Paper Fig 9. Geostrophic speed |u_g|
 # -------------------
 # NaN-tolerant obs for derivatives
 nan_mask = np.isnan(obs_map)
@@ -249,7 +249,7 @@ print("Saved grad_extraction.pdf")
 plt.close(fig)
 
 # -------------------
-# Figure 3: Geostrophic vorticity ζ/f
+# Paper Fig. 10 Geostrophic vorticity ζ/f
 # -------------------
 # Compute vorticities (use meters for dx/dy; expects lats length ny)
 fsize = 8 # bit larger because more panels
@@ -261,7 +261,7 @@ vort_truth = swot.compute_geostrophic_vorticity(truth_map, dx_m, dy_m, lats_1d, 
 
 vort_diff = vort_truth - vort_recon
 
-# Guassian filtered truth for comparison
+# Gaussian filtered truth for comparison
 sigma_km = 4.0
 sigma_y = (sigma_km * 1e3) / dx_m   # along-track pixels
 sigma_x = (sigma_km * 1e3) / dy_m   # across-track pixels
