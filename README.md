@@ -52,6 +52,7 @@ and the transform functions are called from:
 A full description of the methodology is available in the following paper:
 
 > Skinner, J. W., Callies, J., Lawrence, A., and Zhang, X. (2025). **Isolating Balanced Ocean Dynamics in SWOT Data**. *Submitted to JGR Oceans.*
+> [arXiv:2512.03258](https://arxiv.org/abs/2512.03258)
 
-The scripts used to create the figures in the paper are in ```balanced_extraction_paper/```. 
+The scripts used to create the figures in the paper are in the folder ```balanced_extraction_paper/```. 
 
