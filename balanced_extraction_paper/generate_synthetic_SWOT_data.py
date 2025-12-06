@@ -1,6 +1,6 @@
 # Estimate the balanced signal for the SWOT data and use to
 # generate synthetic SWOT data based on the signal and noise which we can used for the NA simulation. 
-
+import os
 import jws_swot_tools as swot
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -16,12 +16,14 @@ import cartopy.feature as cfeature
  
 # ───── Read and Process Data ─────
 # Read in the SWOT data for this pass
-pass_num = 9
+pass_num = 313
 lat_max = 35
 lat_min = 28
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+folder = f"../synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" # folder to save data
+os.makedirs(folder, exist_ok=True)
 
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(data_folder, pass_num)
 
@@ -106,7 +108,7 @@ p_karin, _ = swot.fit_spectrum(karin, karin.spec_alongtrack_av, swot.karin_model
 # Nadir model fit
 p_nadir, _ = swot.fit_nadir_spectrum(nadir, nadir.spec_alongtrack_av, p_karin)
 
-swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, 'fits.pdf')
+swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, f"{folder}fits.pdf")
 
 # --- Grid and Spacing ---
 nx, ny = 2 * karin.swath_width, karin.track_length
@@ -183,16 +185,16 @@ karin_NA.poptcwg_karin = p_karin
 karin.poptcwg_karin = p_karin
 
 # save the synthetic SWOT data to pickle file
-with open("./pickles/karin_NA_tmean.pkl", "wb") as f:
+with open(f"{folder}karin_synth.pkl", "wb") as f:
    pickle.dump(karin_NA, f)
 
-with open("./pickles/nadir_NA_tmean.pkl", "wb") as f:
+with open(f"{folder}nadir_synth.pkl", "wb") as f:
    pickle.dump(nadir_NA, f)
 
-with open("./pickles/nadir.pkl", "wb") as f:
+with open(f"{folder}nadir_swot.pkl", "wb") as f:
    pickle.dump(nadir, f)
 
-with open("./pickles/karin.pkl", "wb") as f:
+with open(f"{folder}karin_swot.pkl", "wb") as f:
    pickle.dump(karin, f)
 
 print("Saved")
@@ -283,7 +285,7 @@ sc2.set_norm(norm)
 
 plt.suptitle(f"Pass {pass_num:03d}  Cycle {shared_cycles[index]:03d}", fontsize=11)
 plt.tight_layout(rect=[0, 0, 0.9, 0.96])
-fig1.savefig('synthetic_swot_fields.pdf', bbox_inches='tight')
+fig1.savefig(f'{folder}synthetic_swot_fields.pdf', bbox_inches='tight')
 
 print("plotted")
 
@@ -330,4 +332,4 @@ ax2.legend(loc='lower left', fontsize=12, frameon=False)
 ax2.set_ylim(1e-5, 1e7)
 ax2.tick_params(axis='both', which='major', labelsize=13)
 plt.tight_layout(rect=[0, 0, 1, 0.95])
-fig2.savefig('synthetic_swot_spectra.pdf')
+fig2.savefig(f'{folder}synthetic_swot_spectra.pdf')

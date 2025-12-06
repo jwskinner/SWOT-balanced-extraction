@@ -138,3 +138,9 @@ SWOT_*/
 
 # Ingnore Scratch 
 scratch/
+
+# ingnore synthetic swot data folder
+synthetic_swot_data/
+
+# Ignore balanced extraction paper folder
+balanced_extraction_paper/

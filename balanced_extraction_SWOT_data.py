@@ -17,13 +17,13 @@ from jws_swot_tools.julia_bridge import julia_functions as jl
 t = swot.Timer()
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
-pass_number = 20
+#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+pass_number = 22
 lat_min = 28
 lat_max = 35
-RHO_L_KM = 0.0  # Gaussian smoothing scale; 0 = no smoothing
+RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
 
-outdir = f"./SWOT_Pass{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+outdir = f"./balanced_extraction/SWOT_Pass{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
 
@@ -113,7 +113,7 @@ n_k_full = xkk_full.size
 n_n_full = xnn_full.size
 
 # Target grid (km)
-xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=False)
+xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=True) # extends the grid for ST
 n_t = xt.size
 
 # --------------------------------------------------
