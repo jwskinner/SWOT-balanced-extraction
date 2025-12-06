@@ -1,6 +1,6 @@
 # Balanced extraction on synthetic SWOT KaRIn (with optional Nadir)
 # Units:: work in [cm] for covariances/obs, spectra in [cpkm] return [meters] for outputs.
-
+import os
 import pickle
 import numpy as np
 import xarray as xr
@@ -15,17 +15,21 @@ from jws_swot_tools.julia_bridge import julia_functions as jl
 # =========================
 # CONFIG
 # =========================
-PICKLES_DIR      = "./pickles"
-KARIN_NA_PATH    = f"{PICKLES_DIR}/karin_NA_tmean.pkl"
-NADIR_NA_PATH    = f"{PICKLES_DIR}/nadir_NA_tmean.pkl"
-KARIN_PATH       = f"{PICKLES_DIR}/karin.pkl"
-NADIR_PATH       = f"{PICKLES_DIR}/nadir.pkl"
-SIGMA_L_KM       = 1.0            # Gaussian spectral taper scale
+pass_num = 9                     # SWOT pass number
+lat_min = 28 
+lat_max = 35 
+
+SYN_DIR = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" 
+KARIN_NA_PATH    = f"{SYN_DIR}/karin_synth.pkl"
+NADIR_NA_PATH    = f"{SYN_DIR}/nadir_synth.pkl"
+KARIN_PATH       = f"{SYN_DIR}/karin_swot.pkl"
+NADIR_PATH       = f"{SYN_DIR}/nadir_swot.pkl"
+SIGMA_L_KM       = 4.0            # Gaussian spectral taper scale
 COMPUTE_POSTERIOR= True           # toggle posterior on target grid
 TAPER_CUTOFF     = 2.0            # "T(k)" cutoff
-OUTNAME          = f"balanced_extraction_synth_NA_tmean_sm_{int(SIGMA_L_KM)}km"
-OUT_PREFIX       = f"{PICKLES_DIR}/{OUTNAME}"
-
+OUTNAME          = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_{int(SIGMA_L_KM)}km"
+OUT_PREFIX       = f"./balanced_extraction/SYNTH_data/{OUTNAME}/"
+os.makedirs(os.path.dirname(OUT_PREFIX), exist_ok=True)
 t = swot.Timer()
 
 # -------------------------
@@ -68,7 +72,7 @@ spec_nad_noisy = swot.mean_power_spectrum(nad_noisy_xr, nadir_NA.window, "nadir_
 # Fit spectra to get parameters
 p_karin, _   = swot.fit_spectrum(karin_NA, spec_ssh_noisy, swot.karin_model)
 p_nadir, _   = swot.fit_nadir_spectrum(nadir_NA, spec_nad_noisy, p_karin)
-swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, 'fits_synth.pdf')
+swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, f'{OUT_PREFIX}fits_synth.pdf')
 t.lap("Spectral fits done")
 
 # -------------------------
@@ -84,7 +88,7 @@ xnn = (nadir.x_grid.ravel()[mask_n]) * 1e-3
 ynn = (nadir.y_grid.ravel()[mask_n]) * 1e-3
 
 # Target grid (km)
-xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=False)
+xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=True)
 n_t = xt.size
 t.lap("Grids and masks done")
 
@@ -164,7 +168,6 @@ R_tN = np.asarray(C_B_TG(r_tn))     # C[BG]
 C_obs = np.block([[R_KK, R_KN],
                   [R_NK, R_NN]])
 R = np.concatenate([R_tK, R_tN], axis=1)
-
 t.lap("Covariance blocks built")
 
 # -------------------------
@@ -217,32 +220,23 @@ if COMPUTE_POSTERIOR:
     km = int(SIGMA_L_KM)
 
     # Posterior covariance (full)
-    with open(f"{PICKLES_DIR}/posterior_{OUTNAME}.pkl", "wb") as f:
+    with open(f"{OUT_PREFIX}posterior.pkl", "wb") as f:
         pickle.dump(P, f, protocol=pickle.HIGHEST_PROTOCOL)
-    t.lap(f"Posterior saved: {PICKLES_DIR}/posterior_{OUTNAME}.pkl")
+    t.lap(f"Posterior saved: {OUT_PREFIX}posterior.pkl", "wb")
 
     # Covariance of posterior mean
-    with open(f"{PICKLES_DIR}/Cmean_{OUTNAME}.pkl", "wb") as f:
+    with open(f"{OUT_PREFIX}Cmean.pkl", "wb") as f:
         pickle.dump(C_mean, f, protocol=pickle.HIGHEST_PROTOCOL)
-    t.lap(f"C_mean saved: {PICKLES_DIR}/Cmean_{OUTNAME}.pkl")
+    t.lap(f"C_mean saved: {OUT_PREFIX}Cmean.pkl")
 
     # Posterior variance (vector)
-    with open(f"{PICKLES_DIR}/posterior_varvec_{OUTNAME}.pkl", "wb") as f:
+    with open(f"{OUT_PREFIX}posterior_varvec.pkl", "wb") as f:
         pickle.dump(posterior_variance, f, protocol=pickle.HIGHEST_PROTOCOL)
-    t.lap(f"Posterior variance (vector) saved: {PICKLES_DIR}/posterior_varvec_{OUTNAME}.pkl")
+    t.lap(f"Posterior variance (vector) saved: {OUT_PREFIX}posterior_varvec.pkl")
 
     # Posterior variance (field)
-    with open(f"{PICKLES_DIR}/posterior_varfield_{OUTNAME}.pkl", "wb") as f:
+    with open(f"{OUT_PREFIX}posterior_varfield.pkl", "wb") as f:
         pickle.dump(posterior_variance_field, f, protocol=pickle.HIGHEST_PROTOCOL)
-    t.lap(f"Posterior variance (field) saved: {PICKLES_DIR}/posterior_varfield_{OUTNAME}.pkl")
-
-    # print("\n ~~~~~C_obs \n")
-    # swot.diagnose_not_positive_definite(C_obs)
-    # print("~~~~~R_tt")
-    # swot.diagnose_not_positive_definite(R_tt)
-    # print("~~~~~WT")
-    # swot.diagnose_not_positive_definite(W.T @ W)
-    # print("~~~~~P")
-    #swot.diagnose_not_positive_definite(P)
+    t.lap(f"Posterior variance (field) saved: {OUT_PREFIX}posterior_varfield.pkl")
 
 t.total()

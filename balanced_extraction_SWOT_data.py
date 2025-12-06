@@ -23,7 +23,7 @@ lat_min = 28
 lat_max = 35
 RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
 
-outdir = f"./balanced_extraction/SWOT_Pass{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+outdir = f"./balanced_extraction/SWOT_data/SWOT_Pass{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
 
@@ -131,7 +131,7 @@ t.lap("Distance matrices built")
 # --------------------------------------------------
 # COVARIANCE FUNCTIONS WITH TAPER / SMOOTHING
 # --------------------------------------------------
-B_psd = swot.balanced_psd_from_params(p_karin)                                 # B(k) balanced spectrum model
+B_psd  = swot.balanced_psd_from_params(p_karin)                                 # B(k) balanced spectrum model
 Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             # N_K(k) noise spectrum model
 
 sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # [cm]
