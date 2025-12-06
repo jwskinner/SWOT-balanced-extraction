@@ -5,7 +5,7 @@ from .utils import *
 from .plot_tools import *
 from .geometry_tools import * 
 from .spectral_fits import * 
-from .guassian_processes import *
+from .gaussian_processes import *
 from .data_classes import * 
 from .cloud_process import *
 from .simulation_data import *
