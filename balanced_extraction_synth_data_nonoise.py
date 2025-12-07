@@ -2,7 +2,7 @@
 # Units in [cm] for covariances/obs, spectra in [cpkm] return [meters] for outputs.
 # Put the simulation data through with no SWOT noise and include no noise in the covariances 
 # so that the extraction is simply giving us the smoothed field by G(k)
-
+import os
 import pickle
 import numpy as np
 import xarray as xr
@@ -13,21 +13,26 @@ from scipy.linalg import solve_triangular
 from scipy.sparse import issparse
 from scipy.sparse.linalg import eigsh
 from jws_swot_tools.julia_bridge import julia_functions as jl
+import matplotlib.pyplot as plt
 
 # =========================
 # CONFIG
 # =========================
-PICKLES_DIR       = "./pickles"
-KARIN_NA_PATH     = f"{PICKLES_DIR}/karin_NA_tmean.pkl"
-NADIR_NA_PATH     = f"{PICKLES_DIR}/nadir_NA_tmean.pkl"
-KARIN_PATH        = f"{PICKLES_DIR}/karin.pkl"
-NADIR_PATH        = f"{PICKLES_DIR}/nadir.pkl"
-RHO_L_KM          = 1.0              # Gaussian spectral taper scale
-COMPUTE_POSTERIOR = True             # toggle posterior on target grid
-TAPER_CUTOFF      = 2.0              # "T(k)" cutoff
-OUTNAME           = f"balanced_extraction_synth_NA_tmean_sm_{int(RHO_L_KM)}km_nonoise"
-OUT_PREFIX        = f"{PICKLES_DIR}/{OUTNAME}"
+pass_num = 9                                                                   # SWOT pass number
+lat_min  = 28 
+lat_max  = 35 
 
+SYN_DIR = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" 
+KARIN_NA_PATH    = f"{SYN_DIR}/karin_synth.pkl"
+NADIR_NA_PATH    = f"{SYN_DIR}/nadir_synth.pkl"
+KARIN_PATH       = f"{SYN_DIR}/karin_swot.pkl"
+NADIR_PATH       = f"{SYN_DIR}/nadir_swot.pkl"
+RHO_L_KM         = 4.0                                                         # Gaussian spectral taper scale
+COMPUTE_POSTERIOR= False                                                       # toggle posterior on target grid
+TAPER_CUTOFF     = 2.0                                                         # "T(k)" cutoff
+OUTNAME          = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_{int(RHO_L_KM)}km"
+OUTDIR           = f"./balanced_extraction/SYNTH_data/{OUTNAME}/"
+os.makedirs(os.path.dirname(OUTDIR), exist_ok=True)
 t = swot.Timer()
 
 # -------------------------
@@ -68,35 +73,20 @@ spec_nad_noisy = swot.mean_power_spectrum(nad_noisy_xr, nadir_NA.window, "nadir_
 # Fit spectra to get parameters
 p_karin, _   = swot.fit_spectrum(karin_NA, spec_ssh_noisy, swot.karin_model)
 p_nadir, _   = swot.fit_nadir_spectrum(nadir_NA, spec_nad_noisy, p_karin)
-swot.plot_spectral_fits(karin_NA, nadir_NA, p_karin, p_nadir, 'fits_synth.pdf')
+swot.plot_spectral_fits(karin_NA, nadir_NA, p_karin, p_nadir, f'{OUTDIR}fits_synth.pdf')
 t.lap("Spectral fits done")
 
 # -------------------------
 # Geometry & masks
 # -------------------------
-#index = 2 
-# mask_k = np.isfinite(karin.ssha[index])
-# mask_n = np.isfinite(nadir.ssh[index]).ravel()
-
-# Build a 'KaRIn grid that is just the full simulation grid
-# xkk = (karin_NA.x_grid.ravel(order="C")) * 1e-3  # km
-# ykk = (karin_NA.y_grid.ravel(order="C")) * 1e-3
-# xnn = (nadir_NA.x_grid.ravel()[mask_n]) * 1e-3
-# ynn = (nadir_NA.y_grid.ravel()[mask_n]) * 1e-3
-
 # Target grid (km)
-xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin_NA, unit="km", extend=False)
+xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin_NA, unit="km", extend=True)
 n_t = xt.size
 t.lap("Grids and masks done")
 
 # -------------------------
 # Distance matrices in km
 # -------------------------
-# r_kk = swot.pairwise_r(xkk, ykk)
-# r_nn = swot.pairwise_r(xnn, ynn) 
-# r_kn = swot.pairwise_r(xkk, ykk, xnn, ynn) 
-# r_tk = swot.pairwise_r(xt, yt, xkk, ykk)
-# r_tn = swot.pairwise_r(xt, yt, xnn, ynn)
 r_tt = swot.pairwise_r(xt, yt) # we only need target grid because its same as the simulation grid
 t.lap("Distance matrices built")
 
@@ -131,25 +121,10 @@ C_B      = jl.cov(B_psd(kk),  kk)                                        # C[B]
 C_BG     = jl.cov(jl.abel(jl.iabel(B_psd(kk),  kk) * G(kk),  kk), kk)    # C[BT]
 C_BG2    = jl.cov(jl.abel(jl.iabel(B_psd(kk),  kk) * G2(kk), kk), kk)    # C[BG^2]
 #C_BTG    = jl.cov(jl.abel(jl.iabel(B_psd(kk),  kk) * G(kk), kk), kk)    # C[BGT]
+
 # -------------------------
 # Blocks
 # -------------------------
-# Observation terms
-# R_KK = np.asarray(C_BT2(r_kk))
-# R_NN = np.asarray(C_B(r_nn)) # Nadir–Nadir: C[B] + σ_N^2 
-# R_KN = np.asarray(C_BT(r_kn))  
-# R_NK = R_KN.T              
-
-# Target terms 
-# R_tt = np.asarray(C_BG2(r_tt))  
-# R_tK = np.asarray(C_BTG(r_tk))     
-# R_tN = np.asarray(C_BG(r_tn))      
-     
-# Assemble observation covariance
-# C_obs = np.block([[R_KK, R_KN],
-#                   [R_NK, R_NN]])
-# R = np.concatenate([R_tK, R_tN], axis=1)
-
 # New calculation on full sim data + smooth 
 R_KK = np.asarray(C_B(r_tt))                # 'karin-karin' is now just our full fields
 R_tK = np.asarray(C_BG(r_tt))               # target-karin grid is target-sim
@@ -173,50 +148,41 @@ t.lap("Cholesky done")
 # -------------------------
 print("Running balanced extraction...")
 n_times = karin_NA.ssh_noisy.shape[0]
-ht_all = np.empty((n_times, nyt, nxt), dtype=float)
+ht_all    = np.full((n_times, nxt, nyt), np.nan, dtype=float)
+ug_all    = np.full((n_times, nxt, nyt), np.nan, dtype=float)
+vg_all    = np.full((n_times, nxt, nyt), np.nan, dtype=float)
+vel_all   = np.full((n_times, nxt, nyt), np.nan, dtype=float)
+zetag_all = np.full((n_times, nxt, nyt), np.nan, dtype=float)
 
 for i in range(n_times):
-    h_k = karin_NA.ssha_full[i, :, 5:65].ravel()*100  # full simulation fields in [cm]
+    if (i + 1) % 10 == 0 or i == n_times - 1:
+        print(f"  processed {i + 1}/{n_times}")
+    print(nxt, nyt)
+    h_k = karin_NA.ssha_full[i, :, 3:67].ravel()*100  # full simulation fields in [cm] (subset fits the extended grid)
+    print(h_k.shape)
     h_obs = h_k
 
     z  = la.cho_solve((L, lower), h_obs)   # (C_obs)^{-1} h
     ht = R @ z                      # cm
-    ht_all[i] = (ht / 100.0).reshape(nyt, nxt)  # back to [m] 
-    if (i + 1) % 10 == 0 or i == n_times - 1:
-        print(f"  processed {i + 1}/{n_times}")
-
+    ht_all[i] = ((ht / 100.0).reshape(nyt, nxt).T)   # back to [m] 
+    ug, vg, geo_vel, geo_vort = swot.plot_balanced_extraction(karin, nadir, ht_all[i], i, outdir=f"{OUTDIR}/plots_noiseless/")
+    ug_all[i] = ug
+    vg_all[i] = vg
+    vel_all[i] = geo_vel
+    zetag_all[i] = geo_vort
 t.lap("Extraction finished")
-
-# ~~~~~~~~~~~~~Simple plot 
-import matplotlib.pyplot as plt
-index_plot = 2  
-hk_field = swot.compute_laplacian_4th_order(karin_NA.ssha_full[index_plot, :, 5:65])  
-ht_field = swot.compute_laplacian_4th_order(ht_all[index_plot])
-vmax = 1e-9
-vmin = -vmax
-
-fig, axes = plt.subplots(1, 2, figsize=(8, 4), dpi=150, constrained_layout=True)
-im0 = axes[0].imshow(hk_field, origin="lower", cmap='RdBu', vmin=vmin, vmax=vmax)
-axes[0].set_title(fr"$\nabla^2 h$ simulation")
-axes[0].set_xlabel("x")
-axes[0].set_ylabel("y")
-
-im1 = axes[1].imshow(ht_field, origin="lower",cmap='RdBu',vmin=vmin, vmax=vmax)
-axes[1].set_title(fr"$\nabla^2 h$ noiseless extraction $\rho = ${RHO_L_KM} km")
-axes[1].set_xlabel("x")
-axes[1].set_ylabel("y")
-cbar = fig.colorbar(im1, ax=axes.ravel().tolist(), shrink=0.8)
-cbar.set_label("Lap SSH [m]")
-plt.savefig('test.pdf')
-print("PLOTTED")
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 
 # -------------------------
 # Save outputs
 # -------------------------
-with open(f"{OUT_PREFIX}.pkl", "wb") as f:
-    pickle.dump(ht_all, f)
+# save a backup pkl
+karin_NA.ssh_balanced = ht_all
+karin_NA.ug           = ug_all
+karin_NA.vg           = vg_all
+karin_NA.velocity     = vel_all
+karin_NA.vorticity    = zetag_all
+with open(f"{OUTDIR}noiseless_extraction_pass{pass_num}.pkl", "wb") as f:
+    pickle.dump(karin_NA, f)
 t.lap("Balanced field saved")
 
 # -------------------------
@@ -252,14 +218,5 @@ if COMPUTE_POSTERIOR:
     with open(f"{PICKLES_DIR}/posterior_varfield_{OUTNAME}.pkl", "wb") as f:
         pickle.dump(posterior_variance_field, f, protocol=pickle.HIGHEST_PROTOCOL)
     t.lap(f"Posterior variance (field) saved: {PICKLES_DIR}/posterior_varfield_{OUTNAME}.pkl")
-
-    # print("\n ~~~~~C_obs \n")
-    # swot.diagnose_not_positive_definite(C_obs)
-    # print("~~~~~R_tt")
-    # swot.diagnose_not_positive_definite(R_tt)
-    # print("~~~~~WT")
-    # swot.diagnose_not_positive_definite(W.T @ W)
-    # print("~~~~~P")
-    #swot.diagnose_not_positive_definite(P)
 
 t.total()

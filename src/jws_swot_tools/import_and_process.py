@@ -30,7 +30,6 @@ def return_karin_files(filepath, pnum, basic = True):
             pass_num = int(match.group(2))
             if pass_num == pnum:
                 files_with_numbers.append((filename, cycle, pass_num))
-
     files_with_numbers.sort(key=lambda x: x[1])
     return files_with_numbers
 
@@ -86,7 +85,6 @@ def init_swot_arrays(num_shared_cycles, track_length, total_width, track_length_
     tide       = np.full((num_shared_cycles, track_length, total_width), np.nan)
 
     return lat_karin, lon_karin, ssha_karin, time_array, ssha_nadir, lat_nadir, lon_nadir, tide
-
 
 # Returns the indices of the track in the KaRIn file that fall within the specified latitude range.
 def get_karin_track_indices(karin_file, lat_min, lat_max):
@@ -170,12 +168,12 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                         time_cycle_dt[n]  = cf_to_datetime64([tmean], tvar_nc)[0]
             
 
-                # WHOLE CYCLE DROP 
+                # WHOLE CYCLE DROP -- (if theres a NaN drop everything)
                 drop_cycle = False
                 
                 # Check both sides to see if either fails the 20% threshold
                 for side in [0, 1]:
-                    i0 = 34 * side + 5
+                    i0 = 34 * side + 5 # start 5 points in to avoid the edges 
                     i1 = i0 + swath_width
                     qual = data['ssha_karin_2_qual'][indx, i0:i1]
                     total_pts = np.size(qual)

@@ -97,11 +97,14 @@ def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
     # Extension for ST analysis (pads with ~2 grid points on each side)
     if extend:
         x_min -= 2 * dx
-        x_max += 2 * dx
+        x_max += 3 * dx # we dropped one pt in the gap so need to add it here
 
     # 1D grid arrays
     x_target = np.arange(x_min, x_max + dx, dx) # 0.5dx because we are on a half grid
     y_target = np.arange(y_min, y_max + dy, dy)
+
+    if extend: 
+        print(f"Extended grid: {len(x_target)} x-points, {len(y_target)} y-points")
 
     if unit == 'km':
         x_target *= 1e-3

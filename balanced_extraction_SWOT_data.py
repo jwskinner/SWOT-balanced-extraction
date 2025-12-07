@@ -18,12 +18,12 @@ t = swot.Timer()
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
 #data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
-pass_number = 22
+pass_number = 9
 lat_min = 28
 lat_max = 35
 RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
 
-outdir = f"./balanced_extraction/SWOT_data/SWOT_Pass{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+outdir = f"./balanced_extraction/SWOT_data/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
 
@@ -113,7 +113,7 @@ n_k_full = xkk_full.size
 n_n_full = xnn_full.size
 
 # Target grid (km)
-xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=True) # extends the grid for ST
+xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=True)  # extends the grid for ST
 n_t = xt.size
 
 # --------------------------------------------------
@@ -131,7 +131,7 @@ t.lap("Distance matrices built")
 # --------------------------------------------------
 # COVARIANCE FUNCTIONS WITH TAPER / SMOOTHING
 # --------------------------------------------------
-B_psd  = swot.balanced_psd_from_params(p_karin)                                 # B(k) balanced spectrum model
+B_psd  = swot.balanced_psd_from_params(p_karin)                                # B(k) balanced spectrum model
 Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             # N_K(k) noise spectrum model
 
 sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # [cm]
@@ -150,36 +150,36 @@ rho   = 2 * np.pi * RHO_L_KM
 delta = (np.pi * karin.dx_km) / (2 * np.log(2))
 
 # Gaussian and taper
-G  = lambda k: np.exp(-((rho**2) * (k**2)) / 2.0)                               # G
-T  = lambda k: np.exp(-((delta**2) * (k**2)) / 2.0)                             # T
-G2 = lambda k: np.exp(-(rho**2) * (k**2))                                       # G^2
-GT = lambda k: np.exp(-(((rho**2 + delta**2) * k**2) / 2.0))                    # G*T
-T2 = lambda k: np.exp(-(delta**2) * (k**2))                                     # T^2
+G  = lambda k: np.exp(-((rho**2) * (k**2)) / 2.0)                              # G
+T  = lambda k: np.exp(-((delta**2) * (k**2)) / 2.0)                            # T
+G2 = lambda k: np.exp(-(rho**2) * (k**2))                                      # G^2
+GT = lambda k: np.exp(-(((rho**2 + delta**2) * k**2) / 2.0))                   # G*T
+T2 = lambda k: np.exp(-(delta**2) * (k**2))                                    # T^2
 
 # Covariance functions C[r] returned as callables
-C_B   = jl.cov(B_psd(kk), kk)                                                   # C[B]
-C_BT  = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * T(kk), kk),kk)                 # C[BT]
-C_BG  = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * G(kk), kk),kk)                 # C[BG]
-C_BG2 = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * G2(kk), kk), kk)               # C[BG^2]
-C_BTG = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * GT(kk), kk), kk)               # C[BGT]
-C_BT2 = jl.cov(jl.abel(jl.iabel(B_psd(kk) + Nk_psd(kk), kk) * T2(kk), kk), kk)  # C[BT^2] for KaRIn obs (signal + noise)
+C_B   = jl.cov(B_psd(kk), kk)                                                  # C[B]
+C_BT  = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * T(kk), kk),kk)                # C[BT]
+C_BG  = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * G(kk), kk),kk)                # C[BG]
+C_BG2 = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * G2(kk), kk), kk)              # C[BG^2]
+C_BTG = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk) * GT(kk), kk), kk)              # C[BGT]
+C_BT2 = jl.cov(jl.abel(jl.iabel(B_psd(kk) + Nk_psd(kk), kk) * T2(kk), kk), kk) # C[BT^2] for KaRIn obs (signal + noise)
 t.lap("Covariance functions built")
 
 # --------------------------------------------------
 # COVARIANCE BLOCKS
 # --------------------------------------------------
 # Observation terms
-R_KK_full = np.asarray(C_BT2(r_kk_full), dtype=np.float64)                      # KaRIn-KaRIn
-R_NN_full = np.asarray(C_B(r_nn_full), dtype=np.float64)                        # Nadir-Nadir signal
-R_NN_full += (sigma_n**2) * np.eye(r_nn_full.shape[0], dtype=np.float64)        # + noise
+R_KK_full = np.asarray(C_BT2(r_kk_full), dtype=np.float64)                     # KaRIn-KaRIn
+R_NN_full = np.asarray(C_B(r_nn_full), dtype=np.float64)                       # Nadir-Nadir signal
+R_NN_full += (sigma_n**2) * np.eye(r_nn_full.shape[0], dtype=np.float64)       # + noise
 
-R_KN_full = np.asarray(C_BT(r_kn_full), dtype=np.float64)                       # KaRIn-Nadir
+R_KN_full = np.asarray(C_BT(r_kn_full), dtype=np.float64)                      # KaRIn-Nadir
 R_NK_full = R_KN_full.T
 
 # Target terms
-R_tt  = np.asarray(C_BG2(r_tt), dtype=np.float64)                               # Target-Target
-R_tK_full = np.asarray(C_BTG(r_tk_full), dtype=np.float64)                      # Target-KaRIn
-R_tN_full = np.asarray(C_BG(r_tn_full), dtype=np.float64)                       # Target-Nadir
+R_tt  = np.asarray(C_BG2(r_tt), dtype=np.float64)                              # Target-Target
+R_tK_full = np.asarray(C_BTG(r_tk_full), dtype=np.float64)                     # Target-KaRIna
+R_tN_full = np.asarray(C_BG(r_tn_full), dtype=np.float64)                      # Target-Nadir
 
 # Full observation covariance for all potential points
 C_obs_full = np.block([
@@ -212,7 +212,7 @@ for t_idx in range(ntimes):
     obs_mask = np.concatenate([mk_t, mn_t])
     n_obs_t = obs_mask.sum()
     if n_obs_t == 0:
-        print(f"Time {t_idx}: no finite KaRIn or Nadir data -> skipping.")      # skip if this is a NaN time
+        print(f"Time {t_idx}: no finite KaRIn or Nadir data -> skipping.")     # skip if this is a NaN time
         continue
 
     n_obs_t = obs_mask.sum()
@@ -261,6 +261,16 @@ for t_idx in range(ntimes):
     swot.save_balanced_step_to_netcdf(outdir,karin, t_idx, ht_map_t, ug, vg, geo_vort, xt, yt)
     t.lap("Step Complete")
 
+# save a backup pkl
+karin.ssh_balanced = ht_all
+karin.ug           = ug_all
+karin.vg           = vg_all
+karin.velocity     = vel_all
+karin.vorticity    = zetag_all
+with open(f"{outdir}/balanced_extraction_pass{pass_number}.pkl", "wb") as f:
+    pickle.dump(karin, f)
+t.lap("Balanced field saved")
+
 # save the output to a netcdf file 
 x_axis = np.arange(nxt)*karin.dx_km
 y_axis = np.arange(nyt)*karin.dy_km
@@ -287,7 +297,7 @@ ds = xr.Dataset(
     }
 )
 
-nc_path = os.path.join(outdir, f"Balanced_extraction_Pass{pass_number:03d}.nc")
+nc_path = os.path.join(outdir, f"balanced_extraction_pass{pass_number:03d}.nc")
 
 ds.to_netcdf(nc_path)
 

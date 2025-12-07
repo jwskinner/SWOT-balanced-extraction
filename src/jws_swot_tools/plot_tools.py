@@ -416,7 +416,8 @@ def plot_balanced_extraction(
     y_n_valid = nadir.y_grid[mask_n] if nadir.y_grid.ndim == 1 else nadir.y_grid[mask_n]
     ssh_n_valid = nadir.ssha[index][mask_n]
 
-    lats = np.linspace(np.nanmin(karin.lat[index, :, :]), np.nanmax(karin.lat[index, :, :]),nxt)
+    #lats = np.linspace(np.nanmin(karin.lat[index, :, :]), np.nanmax(karin.lat[index, :, :]),nxt)
+    lats = np.linspace(np.nanmin(karin.lat[:, :, :]), np.nanmax(karin.lat[:, :, :]),nxt)
     ht_masked = np.ma.masked_invalid(ht_map)
     geo_vort = swot.compute_geostrophic_vorticity(ht_masked, grid_res_m, grid_res_m, lats)
     ug, vg, geo_vel = swot.compute_geostrophic_velocity(ht_masked, grid_res_m, grid_res_m, lats)
@@ -440,7 +441,7 @@ def plot_balanced_extraction(
         vmin=vmin, vmax=vmax, edgecolor="none",
         rasterized=True
     )
-    axes[0].set_title("Observed SSHA")
+    axes[0].set_title("SWOT Observed SSHA")
     axes[0].set_ylabel("across-track (km)")
     axes[0].margins(x=0, y=0)
     axes[0].set_ylim(0, y_km.max())
