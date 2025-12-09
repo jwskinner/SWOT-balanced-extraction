@@ -1,6 +1,6 @@
 # Estimate the balanced signal for the SWOT data and use to
 # generate synthetic SWOT data based on the signal and noise which we can used for the NA simulation. 
-import os
+import os, sys
 import jws_swot_tools as swot
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
@@ -16,18 +16,20 @@ import cartopy.feature as cfeature
  
 # ───── Read and Process Data ─────
 # Read in the SWOT data for this pass
-pass_num = 313
+pass_num = 7
 lat_max = 35
 lat_min = 28
 
+if len(sys.argv) > 1: 
+    pass_num = int(sys.argv[1])
+
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
-folder = f"../synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" # folder to save data
+folder = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" # folder to save data
 os.makedirs(folder, exist_ok=True)
-
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(data_folder, pass_num)
 
-sample_index = 2 
+sample_index = 1 
 indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], lat_min, lat_max)
 indxs, track_length_nadir = swot.get_nadir_track_indices(nadir_files[sample_index][0], lat_min, lat_max)
 dims_SWOT = [len(shared_cycles), track_length, track_length_nadir]
@@ -203,7 +205,7 @@ print("Saved")
 # Paper Fig. 6 a): Three field maps
 # --------------------
 
-index = 40
+index = 10 # index for Fig 6 is 40
 
 cmap = cmocean.cm.balance
 

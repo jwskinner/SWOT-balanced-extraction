@@ -1,7 +1,7 @@
 # Balanced extraction on SWOT KaRIn + Nadir with time loop
 # Reuses geometry and covariance matrices, subsetting per time
 # Units: covariances/obs in [cm], spectra in [cpkm], outputs in [m]
-import os
+import os, sys
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -10,23 +10,26 @@ import scipy.linalg as la
 import jws_swot_tools as swot
 import xarray as xr
 from jws_swot_tools.julia_bridge import julia_functions as jl
+import pickle
 
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
 t = swot.Timer()
 
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
-pass_number = 9
+#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
+data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+pass_number = 270
 lat_min = 28
 lat_max = 35
 RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
 
+if len(sys.argv) > 1: # we can replace the pass_number in as an argument 
+    pass_number = int(sys.argv[1])
+
 outdir = f"./balanced_extraction/SWOT_data/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
-
 # --------------------------------------------------
 # LOAD SWOT FILES
 # --------------------------------------------------
@@ -199,6 +202,7 @@ vg_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 vel_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 zetag_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 
+print("Starting Time Loop")
 for t_idx in range(ntimes):
     print(f"--- Time index {t_idx+1}/{ntimes} ---")
 
@@ -210,10 +214,6 @@ for t_idx in range(ntimes):
 
     # Combined observation mask
     obs_mask = np.concatenate([mk_t, mn_t])
-    n_obs_t = obs_mask.sum()
-    if n_obs_t == 0:
-        print(f"Time {t_idx}: no finite KaRIn or Nadir data -> skipping.")     # skip if this is a NaN time
-        continue
 
     n_obs_t = obs_mask.sum()
     if n_obs_t == 0:
@@ -267,7 +267,7 @@ karin.ug           = ug_all
 karin.vg           = vg_all
 karin.velocity     = vel_all
 karin.vorticity    = zetag_all
-with open(f"{outdir}/balanced_extraction_pass{pass_number}.pkl", "wb") as f:
+with open(f"{outdir}/balanced_extraction_pass{pass_number:03d}.pkl", "wb") as f:
     pickle.dump(karin, f)
 t.lap("Balanced field saved")
 
@@ -282,7 +282,7 @@ ds = xr.Dataset(
         "ug":           (("time", "x", "y"), ug_all,    {"units": "m/s", "description": "Geostrophic Velocity U"}),
         "vg":           (("time", "x", "y"), vg_all,    {"units": "m/s", "description": "Geostrophic Velocity V"}),
         "velocity":     (("time", "x", "y"), vel_all,   {"units": "m/s", "description": "Geostrophic Velocity Magnitude"}),
-        "vorticity":    (("time", "x", "y"), zetag_all, {"units": "1/s", "description": "Geostrophic Relative Vorticity"}),
+        "vorticity":    (("time", "x", "y"), zetag_all, {"units": "1/f", "description": "Geostrophic Relative Vorticity"}),
     },
     coords={
         "time": (("time",), time_axis),
@@ -298,7 +298,6 @@ ds = xr.Dataset(
 )
 
 nc_path = os.path.join(outdir, f"balanced_extraction_pass{pass_number:03d}.nc")
-
 ds.to_netcdf(nc_path)
 
 print(f"Data saved to: {nc_path}")

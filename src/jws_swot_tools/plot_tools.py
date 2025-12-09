@@ -382,7 +382,7 @@ def plot_balanced_extraction(
     ht_map, 
     index,  
     outdir="./",
-    grid_res_m=2000
+    grid_res_m=2000, 
 ):
     if not os.path.exists(outdir):
         os.makedirs(outdir, exist_ok=True)
@@ -501,7 +501,7 @@ def plot_balanced_extraction(
     for ax in axes:
         ax.set_yticks(yticks)
 
-    print(f"Saving plot to {outname}...")
+    #print(f"Saving plot to {outname}...")
     plt.savefig(outname, dpi=300, bbox_inches="tight")
     plt.show()
 

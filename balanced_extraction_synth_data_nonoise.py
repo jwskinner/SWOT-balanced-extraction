@@ -2,7 +2,7 @@
 # Units in [cm] for covariances/obs, spectra in [cpkm] return [meters] for outputs.
 # Put the simulation data through with no SWOT noise and include no noise in the covariances 
 # so that the extraction is simply giving us the smoothed field by G(k)
-import os
+import os, sys
 import pickle
 import numpy as np
 import xarray as xr
@@ -13,14 +13,19 @@ from scipy.linalg import solve_triangular
 from scipy.sparse import issparse
 from scipy.sparse.linalg import eigsh
 from jws_swot_tools.julia_bridge import julia_functions as jl
+import pandas as pd
+from datetime import datetime
 import matplotlib.pyplot as plt
 
 # =========================
 # CONFIG
 # =========================
-pass_num = 9                                                                   # SWOT pass number
+pass_num = 7                                                                   # SWOT pass number
 lat_min  = 28 
 lat_max  = 35 
+
+if len(sys.argv) > 1: 
+    pass_num = int(sys.argv[1])
 
 SYN_DIR = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" 
 KARIN_NA_PATH    = f"{SYN_DIR}/karin_synth.pkl"
@@ -30,7 +35,7 @@ NADIR_PATH       = f"{SYN_DIR}/nadir_swot.pkl"
 RHO_L_KM         = 4.0                                                         # Gaussian spectral taper scale
 COMPUTE_POSTERIOR= False                                                       # toggle posterior on target grid
 TAPER_CUTOFF     = 2.0                                                         # "T(k)" cutoff
-OUTNAME          = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_{int(RHO_L_KM)}km"
+OUTNAME          = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 OUTDIR           = f"./balanced_extraction/SYNTH_data/{OUTNAME}/"
 os.makedirs(os.path.dirname(OUTDIR), exist_ok=True)
 t = swot.Timer()
@@ -83,6 +88,8 @@ t.lap("Spectral fits done")
 xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin_NA, unit="km", extend=True)
 n_t = xt.size
 t.lap("Grids and masks done")
+print(nxt, nyt)
+print(karin_NA.ssha_full[0, :, 3:67].shape)
 
 # -------------------------
 # Distance matrices in km
@@ -133,7 +140,6 @@ C_obs = R_KK                                # only use the karin part
 R = R_tK
 
 # swot.diagnose_positive_definite(C_obs)
-
 t.lap("Covariance blocks built")
 
 # -------------------------
@@ -147,21 +153,17 @@ t.lap("Cholesky done")
 # Extraction 
 # -------------------------
 print("Running balanced extraction...")
-n_times = karin_NA.ssh_noisy.shape[0]
-ht_all    = np.full((n_times, nxt, nyt), np.nan, dtype=float)
-ug_all    = np.full((n_times, nxt, nyt), np.nan, dtype=float)
-vg_all    = np.full((n_times, nxt, nyt), np.nan, dtype=float)
-vel_all   = np.full((n_times, nxt, nyt), np.nan, dtype=float)
-zetag_all = np.full((n_times, nxt, nyt), np.nan, dtype=float)
+ht_all    = np.full((ntime, nxt, nyt), np.nan, dtype=float)
+ug_all    = np.full((ntime, nxt, nyt), np.nan, dtype=float)
+vg_all    = np.full((ntime, nxt, nyt), np.nan, dtype=float)
+vel_all   = np.full((ntime, nxt, nyt), np.nan, dtype=float)
+zetag_all = np.full((ntime, nxt, nyt), np.nan, dtype=float)
 
-for i in range(n_times):
-    if (i + 1) % 10 == 0 or i == n_times - 1:
-        print(f"  processed {i + 1}/{n_times}")
-    print(nxt, nyt)
+for i in range(ntime):
+    if (i + 1) % 10 == 0 or i == ntime - 1:
+        print(f"  processed {i + 1}/{ntime}")
     h_k = karin_NA.ssha_full[i, :, 3:67].ravel()*100  # full simulation fields in [cm] (subset fits the extended grid)
-    print(h_k.shape)
     h_obs = h_k
-
     z  = la.cho_solve((L, lower), h_obs)   # (C_obs)^{-1} h
     ht = R @ z                      # cm
     ht_all[i] = ((ht / 100.0).reshape(nyt, nxt).T)   # back to [m] 
@@ -181,9 +183,40 @@ karin_NA.ug           = ug_all
 karin_NA.vg           = vg_all
 karin_NA.velocity     = vel_all
 karin_NA.vorticity    = zetag_all
-with open(f"{OUTDIR}noiseless_extraction_pass{pass_num}.pkl", "wb") as f:
+with open(f"{OUTDIR}balanced_extraction_noiseless_pass{pass_num:03d}.pkl", "wb") as f:
     pickle.dump(karin_NA, f)
 t.lap("Balanced field saved")
+
+# save the output to a netcdf file 
+x_axis = np.arange(nxt)*karin_NA.dx_km
+y_axis = np.arange(nyt)*karin_NA.dy_km
+time_axis = pd.to_datetime(karin_NA.date_list[:ntime])
+
+ds = xr.Dataset(
+    data_vars={
+        "ssh_balanced": (("time", "x", "y"), ht_all,    {"units": "m", "description": "Balanced SSH anomaly"}),
+        "ug":           (("time", "x", "y"), ug_all,    {"units": "m/s", "description": "Geostrophic Velocity U"}),
+        "vg":           (("time", "x", "y"), vg_all,    {"units": "m/s", "description": "Geostrophic Velocity V"}),
+        "velocity":     (("time", "x", "y"), vel_all,   {"units": "m/s", "description": "Geostrophic Velocity Magnitude"}),
+        "vorticity":    (("time", "x", "y"), zetag_all, {"units": "1/f", "description": "Geostrophic Relative Vorticity"}),
+    },
+    coords={
+        "time": (("time",), time_axis),
+        "x":    (("x",), x_axis, {"units": "km", "description": "X distance"}),
+        "y":    (("y",), y_axis, {"units": "km", "description": "Y distance"}),
+    },
+    attrs={
+        "title": f"SWOT Balanced Extraction on Noiseless Simulation Data Pass {pass_num}",
+        "smoothing_scale_rho": f"{RHO_L_KM} km",
+        "lat_range": f"{lat_min} to {lat_max}",
+        "creation_date": datetime.now().isoformat(),
+    }
+)
+
+nc_path = os.path.join(OUTDIR, f"balanced_extraction_noiseless_pass{pass_num:03d}.nc")
+
+ds.to_netcdf(nc_path)
+print(f"Data saved to: {nc_path}")
 
 # -------------------------
 # posterior on target (Eq. 10 in paper)

@@ -321,19 +321,26 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
     ssh_tmean = np.nanmean(ssh_all, axis=0)
     print("Computed time mean over", ssh_all.shape[0], "files with shape", ssh_tmean.shape)
 
+    for t in range(karin.lat.shape[0]): # find first valid time index
+        if np.isfinite(np.asarray(karin.lat)[t]).any():
+            print(f"Using valid time index: {t}")
+            valid_idx = t
+            break
+
     # ---- inputs & basic coercions ----
-    karin_lat = np.asarray(karin.lat)[0]
-    karin_lon = np.asarray(karin.lon)[0]
+    karin_lat = np.asarray(karin.lat)[valid_idx]
+    karin_lon = np.asarray(karin.lon)[valid_idx]
     karin_lat_full = np.asarray(karin.lat_full)
     karin_lon_full = np.asarray(karin.lon_full)
-    nadir_lat = np.asarray(nadir.lat)[0]
-    nadir_lon = np.asarray(nadir.lon)[0]
+    nadir_lat = np.asarray(nadir.lat)[valid_idx]
+    nadir_lon = np.asarray(nadir.lon)[valid_idx]
 
     ssh_karin_list, ssh_karin_full_list, ssh_nadir_list, used = [], [], [], []
     ssh_full_box_list, lat_full_box_list, lon_full_box_list = [], [], []
 
     # ---- main loop ----
     for d in matched_dates:
+        print(d)
         fpath = os.path.join(data_folder, f"snapshot_{d.strftime(DATE_FMT)}.mat")
         if not os.path.exists(fpath):
             continue
@@ -341,6 +348,7 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
         mat = sio.loadmat(fpath)
         XC  = np.asarray(mat["XC"]).squeeze()    # (Ny,Nx)
         YC  = np.asarray(mat["YC"]).squeeze()    # (Ny,Nx)
+        
         ssh_in = np.asarray(mat.get("ssh", mat.get("ssh_daily_inst_filtered"))).squeeze()
         if ssh_in.ndim != 2 or XC.ndim != 2 or YC.ndim != 2:
             raise ValueError(f"In {fpath}: XC, YC, ssh must be 2-D; got {XC.shape}, {YC.shape}, {ssh_in.shape}")

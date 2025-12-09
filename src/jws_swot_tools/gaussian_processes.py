@@ -100,8 +100,8 @@ def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
         x_max += 3 * dx # we dropped one pt in the gap so need to add it here
 
     # 1D grid arrays
-    x_target = np.arange(x_min, x_max + dx, dx) # 0.5dx because we are on a half grid
-    y_target = np.arange(y_min, y_max + dy, dy)
+    x_target = np.arange(x_min, x_max + 0.5 * dx, dx) # 0.5dx because we are on a half grid
+    y_target = np.arange(y_min, y_max + 0.5 * dy, dy)
 
     if extend: 
         print(f"Extended grid: {len(x_target)} x-points, {len(y_target)} y-points")
