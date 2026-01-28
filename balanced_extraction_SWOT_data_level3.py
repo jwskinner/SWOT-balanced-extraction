@@ -1,4 +1,4 @@
-# Balanced extraction on SWOT KaRIn + Nadir with time loop
+# Balanced extraction on SWOT KaRIn + Nadir Level 3 data with time loop
 # Reuses geometry and covariance matrices, subsetting per time
 # Units: covariances/obs in [cm], spectra in [cpkm], outputs in [m]
 import os, sys
@@ -17,9 +17,7 @@ import pickle
 # --------------------------------------------------
 t = swot.Timer()
 
-#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
-pass_number = 270
+pass_number = 354
 lat_min = 28
 lat_max = 35
 RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
@@ -27,24 +25,23 @@ RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
 if len(sys.argv) > 1: # we can replace the pass_number in as an argument 
     pass_number = int(sys.argv[1])
 
-outdir = f"./balanced_extraction/SWOT_data_VD/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+data_folder = f'/expanse/lustre/projects/cit197/jskinner1/SWOT/LEVEL_3/pass_{str(pass_number).zfill(3)}/'
+outdir = f"./balanced_extraction/SWOT_data_L3/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
+
 # --------------------------------------------------
 # LOAD SWOT FILES
 # --------------------------------------------------
 # karin_files, nadir_files are sorted by cycle and contain the same cycles
-_, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(
+files, shared_cycles, karin_files, nadir_files = swot.return_swot_l3_files(
     data_folder, pass_number
 )
 
-# Use some file index to get track length
+# Use a file index to get track length
 sample_index = 2  # in case the first one has NaNs
-indx, track_length = swot.get_karin_track_indices(
+indx, track_length, grid_width, track_length_nadir, indx_nad = swot.get_l3_indices(
     karin_files[sample_index][0], lat_min, lat_max
-)
-indxs, track_length_nadir = swot.get_nadir_track_indices(
-    nadir_files[sample_index][0], lat_min, lat_max
 )
 
 dims = [len(shared_cycles), track_length, track_length_nadir]
@@ -53,20 +50,13 @@ dims = [len(shared_cycles), track_length, track_length_nadir]
 # INIT DATA CLASSES & LOAD DATA
 # --------------------------------------------------
 karin, nadir = swot.init_swot_arrays(dims, lat_min, lat_max, pass_number)
-
-# Load and process KaRIn
-swot.load_karin_data(karin_files, lat_min, lat_max, karin, verbose=False)
-swot.process_karin_data(karin)
 karin.shared_cycles = shared_cycles  # store
 
-# Load and process Nadir
-swot.load_nadir_data(nadir_files, lat_min, lat_max, nadir)
-swot.process_nadir_data(nadir)
+# Load and process KaRIn and Nadir data
+swot.load_l3_data(karin_files, indx, karin, nadir, lat_min, lat_max)
 
-# remove spatial mean if needed
-# karin_mean_t = np.nanmean(karin.ssha, axis=(1, 2))
-# karin.ssha = karin.ssha - karin_mean_t[:, None, None]
-# nadir.ssha = nadir.ssha - karin_mean_t[:, None]
+swot.process_l3_karin(karin)
+swot.process_l3_nadir(nadir)
 
 # Build coordinate grids in [m]
 karin.coordinates()
@@ -242,7 +232,10 @@ for t_idx in range(ntimes):
         cho_t = la.cho_factor(C_obs_t, lower=True, check_finite=False)
         z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
     except la.LinAlgError as e:
-        print(f"Cholesky failed at time {t_idx}: {e}")
+        print(f"Cholesky failed at time {t_idx}: {e} Adding jitter and retrying.")
+        C_jitter = C_obs_t + np.eye(len(h_obs_t)) * 1e-9
+        cho_t = la.cho_factor(C_jitter, lower=True, check_finite=False)
+        z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
         continue
 
     # Posterior mean on target grid

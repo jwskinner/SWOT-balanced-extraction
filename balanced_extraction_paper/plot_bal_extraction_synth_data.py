@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import pickle
+import sys 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -12,9 +13,10 @@ import importlib
 import jws_swot_tools as swot
 importlib.reload(swot)
 from scipy.ndimage import gaussian_filter
+sys.modules["JWS_SWOT_toolbox"] = swot
 
 
-PICKLES = "./pickles"
+PICKLES = "../pickles"
 KARIN_NA_PATH = f"{PICKLES}/karin_NA_tmean.pkl"
 NADIR_NA_PATH = f"{PICKLES}/nadir_NA_tmean.pkl"
 BALANCED_PATH = f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_0km.pkl"  # same but with time mean removed
@@ -359,3 +361,36 @@ print("RMS(ΔSSHA) =", np.sqrt(np.nanmean(ssha_diff**2)))
 print("RMS(|Δu_g|) =", np.sqrt(np.nanmean(g_diff_mag**2)))
 print("RMS(Δζ/f) =", np.sqrt(np.nanmean(vort_diff**2)))
 print("RMS Filt (Δζ/f) =", np.sqrt(np.nanmean(vort_truth_gf.T**2 - vort_recon_gf.T**2)))
+
+# Coordinates (km)
+x_km = np.linspace(0, ny * karin_NA.dy_km, ny)
+y_km = np.linspace(0, nx * karin_NA.dx_km, nx)
+extent_arr = np.array(extent)
+
+np.savez(
+    "Fig10.npz",
+
+    # Coordinates / grid
+    x_km=x_km,
+    y_km=y_km,
+    extent=extent_arr,
+    dx_m=dx_m,
+    dy_m=dy_m,
+    lats_1d=lats_1d,
+
+    # Raw vorticities
+    vort_obs=vort_obs,
+    vort_recon=vort_recon,
+    vort_sim=vort_truth,
+    vort_diff=vort_diff,
+
+    # Filtered fields
+    vort_recon_filt=vort_recon_gf,
+    vort_sim_filt=vort_truth_gf,
+    vort_diff_filt=(vort_truth_gf - vort_recon_gf),
+
+    # Plot limits
+    vort_limits=np.array([vmin_v, vmax_v]),
+)
+
+print("Saved: Fig10.npz")

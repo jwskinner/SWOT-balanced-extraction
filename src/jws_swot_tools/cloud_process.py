@@ -74,7 +74,11 @@ def find_matching_cycles(karin_results, nadir_results):
     # Return the result as a sorted list
     return sorted(list(matching_cycles)), karin_cycles, nadir_cycles, karin_passes, nadir_passes
 
-def return_cloud_files(pass_num, tmin, tmax): 
+def return_cloud_files(pass_num, 
+                       tmin, 
+                       tmax, 
+                       karin_short_name = "SWOT_L2_LR_SSH_2.0", 
+                       nadir_short_name = "SWOT_L2_NALT_GDR_2.0"): 
     
     # Authenticate
     print("------- Authenticating User -------")
@@ -85,16 +89,16 @@ def return_cloud_files(pass_num, tmin, tmax):
     print("Searching Earthaccess ...")
     # Search for all granules matching this pass
     karin_results = earthaccess.search_data(
-        short_name='SWOT_L2_LR_SSH_2.0',
-        temporal=(tmin, tmax),
-        granule_name=f'*_SSH_Basic_*_{pass_num:03d}_*'
+        short_name = karin_short_name,
+        temporal = (tmin, tmax),
+        granule_name = f'*_SSH_Basic_*_{pass_num:03d}_*'
     )
 
     # Search for all granules matching this pass
     nadir_results = earthaccess.search_data(
-        short_name='SWOT_L2_NALT_GDR_2.0',
-        temporal=(tmin, tmax),
-        granule_name=f'*_{pass_num:03d}_*'
+        short_name = nadir_short_name,
+        temporal = (tmin, tmax),
+        granule_name = f'*_{pass_num:03d}_*'
     )
 
     shared_cycles, karin_cycles, nadir_cycles, karin_passes, nadir_passes = find_matching_cycles(karin_results, nadir_results)

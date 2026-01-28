@@ -37,7 +37,7 @@ def return_nadir_files(filepath_nadir, valid_cycles, pnum):
     all_files = glob(filepath_nadir)
     nadir_files = []
     for filename in all_files:
-        match = re.search(r'GPR_2PfP(\d+)_0*(\d+)', filename)
+        match = re.search(r'GPR_2P[fs]P(\d+)_0*(\d+)', filename) # [fs] checks both f and s
         if match:
             cycle = int(match.group(1))
             pass_num = int(match.group(2))
@@ -46,24 +46,27 @@ def return_nadir_files(filepath_nadir, valid_cycles, pnum):
     nadir_files.sort(key=lambda x: x[1])  # sort by cycle
     return nadir_files
 
-def return_swot_files(folder, pnum, basic = True):
+def return_swot_files(folder, pnum, nadir_folder=None, basic=True):
     
-    if basic: 
-        filepath = os.path.join(folder, 'SWOT_L2_LR_SSH_Basic_*.nc')
-    else: 
-        filepath = os.path.join(folder, 'SWOT_L2_LR_SSH_Expert_*.nc')
+    # 1. Set the search pattern
+    lvl = "L2"
+    typ = "Basic" if basic else "Expert"
+    filepath = os.path.join(folder, f'SWOT_{lvl}_LR_SSH_{typ}_*.nc')
     
-    filepath_nadir = os.path.join(folder, 'SWOT_GPR_*.nc')
-    
+    # 2. Get the primary files (Karin)
     karin_files_with_numbers = return_karin_files(filepath, pnum, basic)
-    karin_cycles = {cycle for _, cycle, _ in karin_files_with_numbers}
-
-    nadir_files_with_numbers = return_nadir_files(filepath_nadir, karin_cycles, pnum)
-    
     karin_dict = {cycle: item for item, cycle, _ in karin_files_with_numbers}
+
+    # 3. Look for separate GPR files for Nadir
+    nadir_base = nadir_folder if nadir_folder is not None else folder
+    filepath_nadir = os.path.join(nadir_base, 'SWOT_GPR_*.nc')
+    karin_cycles = {cycle for _, cycle, _ in karin_files_with_numbers}
+    nadir_files_with_numbers = return_nadir_files(filepath_nadir, karin_cycles, pnum)
     nadir_dict = {cycle: item for item, cycle, _ in nadir_files_with_numbers}
     
+    # 4. Align based on shared cycles
     shared_cycles = sorted(set(karin_dict) & set(nadir_dict))
+    print(f"Shared Cycles: {shared_cycles}")
     
     karin_aligned = [(karin_dict[c], c) for c in shared_cycles]
     nadir_aligned = [(nadir_dict[c], c) for c in shared_cycles]
