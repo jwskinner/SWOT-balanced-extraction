@@ -421,8 +421,10 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
     time_cycle_num = np.full(nadir.num_cycles, np.nan)
     time_cycle_dt  = np.empty(nadir.num_cycles, dtype='datetime64[ns]')
     time_cycle_dt[:] = np.datetime64('NaT')
+    cycle_numbers = np.full(nadir.num_cycles, np.nan)
 
     for n, (filename, cycle) in enumerate(nadir_files_with_numbers):
+        cycle_numbers[n] = cycle
         data = nc.Dataset(filename, 'r')
         try:
             group = data['data_01']
@@ -433,7 +435,7 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
                 num_bad_cycles += 1
                 continue
 
-            # --- mean time over exactly those indices (NaNs ignored) ---
+            # --- mean time ---
             if 'time' in group.variables:
                 tvar_nc = group.variables['time']
                 tvals   = np.asarray(tvar_nc[indxs])
@@ -449,13 +451,12 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
             tide = group['internal_tide_hret'][indxs]
             ssha = group['ku']['ssha'][indxs] + tide
 
-            # --- Implement the 20% rule for bad quality points ---
+            # ---  20% threshold bad quality points ---
             total_pts = ssha.size
             if total_pts > 0:
                 num_bad_pts = np.sum(ssha.mask)
                 bad_frac = num_bad_pts / total_pts
                 if bad_frac > 0.20:
-                    # This print statement is optional but helpful for transparency
                     print(f"Nadir Cycle {cycle} dropped: >20% bad-quality nadir points ({bad_frac:.2%}).")
                     num_bad_cycles += 1
                     continue
@@ -475,6 +476,7 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
     # store one-per-cycle times (mean over selected along-track indices)
     nadir.time = time_cycle_num
     nadir.time_dt  = time_cycle_dt
+    nadir.cycles = cycle_numbers
 
     print(f"Number of good nadir cycles: {num_good_cycles}")
     print(f"Number of bad nadir cycles: {num_bad_cycles}")

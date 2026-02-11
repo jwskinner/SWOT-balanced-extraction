@@ -30,6 +30,7 @@ if len(sys.argv) > 1: # we can replace the pass_number in as an argument
 outdir = f"./balanced_extraction/SWOT_data_VD/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
+
 # --------------------------------------------------
 # LOAD SWOT FILES
 # --------------------------------------------------

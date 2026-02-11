@@ -232,11 +232,15 @@ for t_idx in range(ntimes):
         cho_t = la.cho_factor(C_obs_t, lower=True, check_finite=False)
         z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
     except la.LinAlgError as e:
-        print(f"Cholesky failed at time {t_idx}: {e} Adding jitter and retrying.")
-        C_jitter = C_obs_t + np.eye(len(h_obs_t)) * 1e-9
-        cho_t = la.cho_factor(C_jitter, lower=True, check_finite=False)
-        z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
-        continue
+        print(f"Cholesky failed at time {t_idx}: {e}. Adding jitter and retrying.")
+        try:
+            C_jitter = C_obs_t + np.eye(len(h_obs_t)) * 1e-3 # adds a 1e-3 cm^2 jitter to the diagonal
+            cho_t = la.cho_factor(C_jitter, lower=True, check_finite=False)
+            z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
+            print(f"  Success with jitter = 1e-4")
+        except la.LinAlgError as e2:
+            print(f"  Jitter failed: {e2}. Skipping time {t_idx}.")
+            continue
 
     # Posterior mean on target grid
     ht_t = R_t @ z_t                      
@@ -269,6 +273,8 @@ x_axis = np.arange(nxt)*karin.dx_km
 y_axis = np.arange(nyt)*karin.dy_km
 time_axis = pd.to_datetime(karin.time_dt[:ntimes])
 
+ny_full, nx_full = karin.lat_full.shape  # full KaRIn grid size in original data
+
 ds = xr.Dataset(
     data_vars={
         "ssh_balanced": (("time", "x", "y"), ht_all,    {"units": "m", "description": "Balanced SSH anomaly"}),
@@ -276,11 +282,15 @@ ds = xr.Dataset(
         "vg":           (("time", "x", "y"), vg_all,    {"units": "m/s", "description": "Geostrophic Velocity V"}),
         "velocity":     (("time", "x", "y"), vel_all,   {"units": "m/s", "description": "Geostrophic Velocity Magnitude"}),
         "vorticity":    (("time", "x", "y"), zetag_all, {"units": "1/f", "description": "Geostrophic Relative Vorticity"}),
+        "lat_full":     (("y_full", "x_full"), karin.lat_full, {"units": "degrees_north"}),
+        "lon_full":     (("y_full", "x_full"), karin.lon_full, {"units": "degrees_east"}),
     },
     coords={
         "time": (("time",), time_axis),
-        "x":    (("x",), x_axis, {"units": "km", "description": "X distance"}),
-        "y":    (("y",), y_axis, {"units": "km", "description": "Y distance"}),
+        "x":    (("x",), x_axis, {"units": "km", "description": "X distance [km]"}),
+        "y":    (("y",), y_axis, {"units": "km", "description": "Y distance [km]"}),
+        "x_full": (("x_full",), np.arange(nx_full), {"description": "Full KaRIn x indices"}),
+        "y_full": (("y_full",), np.arange(ny_full), {"description": "Full KaRIn y indices"}),
     },
     attrs={
         "title": f"SWOT Balanced Extraction Pass {pass_number}",

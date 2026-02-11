@@ -82,11 +82,11 @@ def get_l3_indices(sample_file, lat_min, lat_max):
         
         return indx, track_len, grid_width, nadir_pt_count, nad_indx
 
-def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ssh_key='ssha_unfiltered'):
+def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ssh_key='ssha_unfiltered', bad_frac=0.1):
     swath_width = karin_obj.swath_width
     
     if len(indx) == 0:
-        return
+        return []
 
     # KaRIn slices (Static)
     idx_slice = slice(indx[0], indx[-1] + 1)
@@ -95,26 +95,53 @@ def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ss
     j_slices = [slice(0, swath_width), slice(-swath_width, None)]
 
     karin_time_list = []
+    bad_cycles = [] 
+    karin_cycles = np.full(karin_obj.num_cycles, np.nan)
 
     for n, (filename, cycle) in enumerate(aligned_files):
+        karin_cycles[n] = cycle
         try:
             with nc.Dataset(filename, 'r') as ds:
                 lat_var = ds.variables['latitude']
                 lon_var = ds.variables['longitude']
-                time_var = ds.variables['time'][:][indx]
-                karin_time_list.append(np.nanmean(time_var))
-                
                 ssh_var = ds.variables[ssh_key]
 
+                # save the lat lon data to karin only need to save one since they dont change with time
+                lat_data = np.array(lat_var[idx_slice], dtype=float)
+                lon_data = np.array(lon_var[idx_slice], dtype=float)
+                if lat_data.shape[0] > 1 and np.nanmean(lat_data[0, :]) > np.nanmean(lat_data[-1, :]):
+                    lat_data = np.flip(lat_data, axis=0)
+                    lon_data = np.flip(lon_data, axis=0)
+                karin_obj.lat_full = lat_data
+                karin_obj.lon_full = lon_data
+                
                 # --- 1. KaRIn (Fast Block Read) ---
+                skip_cycle = False
+
                 for side in (0, 1):
                     lats = lat_var[idx_slice, i0s[side]:i1s[side]]
                     lons = lon_var[idx_slice, i0s[side]:i1s[side]]
                     ssh  = ssh_var[idx_slice, i0s[side]:i1s[side]]
+
+                    # Calculate fraction of bad points
+                    if np.ma.is_masked(ssh):
+                        bad_count = np.count_nonzero(ssh.mask)
+                    else:
+                        bad_count = np.count_nonzero(np.isnan(ssh) | (np.abs(ssh) > 1e4))
+                    current_frac = bad_count / ssh.size
                     
-                    # Handle Descending Passes (KaRIn points in North-South direction)
-                    # If the 0th index is higher latitude than the last index, 
-                    # satellite moving N->S. We flip to enforce S->N (Low->High).
+                    if current_frac > bad_frac:
+                        print(f"Skipping Cycle {cycle}: {current_frac:.1%} bad data.")
+                        bad_cycles.append(cycle)
+                        karin_time_list.append(np.nan)  # Add NaN for bad cycle
+                    
+                        # Fill this cycle's slot with NaNs
+                        karin_obj.ssh[n, :, :] = np.nan
+                        nadir_obj.ssh[n, :] = np.nan
+                        skip_cycle = True
+                        break
+                    
+                    # Handle Descending Passes
                     if lats.shape[0] > 1 and np.nanmean(lats[0, :]) > np.nanmean(lats[-1, :]):
                         lats = np.flip(lats, axis=0)
                         lons = np.flip(lons, axis=0)
@@ -125,6 +152,12 @@ def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ss
                     karin_obj.lon[n, :, j_slices[side]] = lons
                     karin_obj.ssh[n, :, j_slices[side]] = ssh
                     
+                if skip_cycle:
+                    continue
+
+                # Only get time for good cycles
+                time_var = ds.variables['time'][:][indx]
+                karin_time_list.append(np.nanmean(time_var))
 
                 # --- 2. Nadir (Optimized Bounding Box) ---
                 rows = ds.variables['i_num_line'][:]
@@ -139,8 +172,7 @@ def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ss
                     cols = cols[valid]
 
                 if len(rows) > 0:
-                    # A. Define Bounding Box (Tall, Narrow Rectangle)
-                    # This reads the whole track range in 1 fast sequential read
+                    # A. Define Bounding Box
                     r_min, r_max = rows.min(), rows.max()
                     c_min, c_max = cols.min(), cols.max()
 
@@ -149,7 +181,7 @@ def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ss
                     lon_block = lon_var[r_min:r_max+1, c_min:c_max+1]
                     ssh_block = ssh_var[r_min:r_max+1, c_min:c_max+1]
 
-                    # C. Extract Track Points from Block (In Memory)
+                    # C. Extract Track Points from Block 
                     local_rows = rows - r_min
                     local_cols = cols - c_min
                     
@@ -164,34 +196,61 @@ def load_l3_data(aligned_files, indx, karin_obj, nadir_obj, lat_min, lat_max, ss
                     final_lat = track_lats[mask]
                     final_lon = track_lons[mask]
 
-                    # E. Clean and Assign
+                    # E. Clean
                     final_ssh[np.abs(final_ssh) > 1e4] = np.nan
 
-                   # F. Interpolate to evenly spaced along-track points
+                    # F. Handle Descending Pass for Nadir
+                    if len(final_lat) > 1 and final_lat[0] > final_lat[-1]:
+                        # Descending pass: flip to go from low to high latitude
+                        final_lat = np.flip(final_lat)
+                        final_lon = np.flip(final_lon)
+                        final_ssh = np.flip(final_ssh)
+
+                    # G. Interpolate to evenly spaced along-track points
                     npts = nadir_obj.ssh.shape[1]  
                     master_lat = np.linspace(final_lat.min(), final_lat.max(), npts)
 
-                    f_ssh = interp1d(final_lat, final_ssh, kind='linear', bounds_error=False, fill_value="NaN")
+                    f_ssh = interp1d(final_lat, final_ssh, kind='linear', bounds_error=False, fill_value=np.nan)
                     nadir_obj.ssh[n, :] = f_ssh(master_lat)
 
-                    f_lon = interp1d(final_lat, final_lon, kind='linear', bounds_error=False, fill_value="NaN")
+                    f_lon = interp1d(final_lat, final_lon, kind='linear', bounds_error=False, fill_value=np.nan)
                     nadir_obj.lon[n, :] = f_lon(master_lat)
 
                     nadir_obj.lat[n, :] = master_lat
+
+                # Remove spatial means
+                spatial_mean = np.nanmean(karin_obj.ssh[n, :, :])
+                karin_obj.ssh[n, :, :] -= spatial_mean
+                nadir_obj.ssh[n, :] -= spatial_mean
 
         except KeyError as e:
             print(f"Cycle {cycle}: Variable not found {e}")
         except Exception as e:
             print(f"Error loading Cycle {cycle}: {e}")
     
-    # add the time to KaRIn class
-    karin_obj.time = np.array(karin_time_list) 
-    karin_obj.time_dt = cf_to_datetime64(karin_time_list, ds.variables['time'])
-
-    # Remove the spatial means (should be demeaned anyway)
-    spatial_mean = np.nanmean(karin_obj.ssh[n, :, :])
-    karin_obj.ssh[n, :, :] -= spatial_mean
-    nadir_obj.ssh[n, :] -= spatial_mean
+    # Convert times to datetime at the end
+    karin_obj.time = np.array(karin_time_list)
+    karin_obj.cycles = np.array(karin_cycles)
+    
+    # Create datetime array with NaT for bad cycles
+    dt_array = np.full(len(karin_time_list), np.datetime64('NaT'), dtype='datetime64[ns]')
+    
+    if len(aligned_files) > 0:
+        sample_file = aligned_files[0][0]
+        with nc.Dataset(sample_file, 'r') as ds:
+            time_var = ds.variables['time']
+            for i, t in enumerate(karin_time_list):
+                if not np.isnan(t):
+                    dt_array[i] = cf_to_datetime64([t], time_var)[0]
+    
+    karin_obj.time_dt = dt_array
+    
+    if bad_cycles:
+        print(f"\n{'='*50}")
+        print(f"Bad cycles: {bad_cycles}")
+        print(f"{'='*50}\n")
+    
+    return bad_cycles
 
 
 def process_l3_karin(karin, cutoff_m=100e3, delta=2e3):
