@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cartopy.crs as ccrs
 from matplotlib import rcParams
+from datetime import datetime
 
 def plot_grids(karin, nadir):
     
@@ -389,7 +390,6 @@ def plot_balanced_extraction(
     
     outname = f"{outdir}/balanced_extraction_cycle{karin.shared_cycles[index]}_index_{index:03d}.png"
     
-    # --- 1. Setup Dimensions and Grids ---
     nxt, nyt = ht_map.shape
 
     x_extent_km = nyt * float(karin.dx) * 1e-3
@@ -427,7 +427,7 @@ def plot_balanced_extraction(
     geo_vort_plot = np.ma.masked_invalid(np.clip(geo_vort, vort_vmin, vort_vmax))
 
     fig, axes = plt.subplots(4, 1, figsize=(15, 10), sharex=True, gridspec_kw={"hspace": 0.4})
-    extent = [0, x_km.max(), 0, y_km.max()]
+    extent = [0, x_km.max(), 0.5, y_km.max()+0.5]
 
     sc1 = axes[0].scatter(
         y_k_valid * 1e-3, x_k_valid * 1e-3,
@@ -442,6 +442,8 @@ def plot_balanced_extraction(
         rasterized=True
     )
     axes[0].set_title("SWOT Observed SSHA")
+    dt = karin.time_dt[index].astype('datetime64[s]').astype(datetime)
+    axes[0].set_title(dt.strftime("%d %B %Y"), loc="right")
     axes[0].set_ylabel("across-track (km)")
     axes[0].margins(x=0, y=0)
     axes[0].set_ylim(0, y_km.max())
@@ -501,7 +503,6 @@ def plot_balanced_extraction(
     for ax in axes:
         ax.set_yticks(yticks)
 
-    #print(f"Saving plot to {outname}...")
     plt.savefig(outname, dpi=300, bbox_inches="tight")
     plt.show()
 

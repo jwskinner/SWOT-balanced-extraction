@@ -19,9 +19,9 @@ t = swot.Timer()
 
 #data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
-pass_number = 270
-lat_min = 28
-lat_max = 35
+pass_number = 354
+lat_min = 22 #28
+lat_max = 30 #35
 RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
 
 if len(sys.argv) > 1: # we can replace the pass_number in as an argument 
@@ -203,8 +203,10 @@ vg_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 vel_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 zetag_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 
+good_indices = [i for i, cyc in enumerate(shared_cycles) if cyc in karin.good_cycles]
+print(f"Good time indices: {good_indices}")
 print("Starting Time Loop")
-for t_idx in range(ntimes):
+for t_idx in good_indices:
     print(f"--- Time index {t_idx+1}/{ntimes} ---")
 
     mk_t_full_flat = np.isfinite(karin.ssha[t_idx]).ravel(order="C")
@@ -277,19 +279,49 @@ x_axis = np.arange(nxt)*karin.dx_km
 y_axis = np.arange(nyt)*karin.dy_km
 time_axis = pd.to_datetime(karin.time_dt[:ntimes])
 
+ny_full, nx_full = karin.lat_full.shape
+
 ds = xr.Dataset(
     data_vars={
-        "ssh_balanced": (("time", "x", "y"), ht_all,    {"units": "m", "description": "Balanced SSH anomaly"}),
-        "ug":           (("time", "x", "y"), ug_all,    {"units": "m/s", "description": "Geostrophic Velocity U"}),
-        "vg":           (("time", "x", "y"), vg_all,    {"units": "m/s", "description": "Geostrophic Velocity V"}),
-        "velocity":     (("time", "x", "y"), vel_all,   {"units": "m/s", "description": "Geostrophic Velocity Magnitude"}),
-        "vorticity":    (("time", "x", "y"), zetag_all, {"units": "1/f", "description": "Geostrophic Relative Vorticity"}),
+        "ssh_balanced": (("time", "x", "y"), ht_all,
+                         {"units": "m", "description": "Balanced SSH anomaly"}),
+
+        "ug": (("time", "x", "y"), ug_all,
+               {"units": "m/s", "description": "Geostrophic Velocity U"}),
+
+        "vg": (("time", "x", "y"), vg_all,
+               {"units": "m/s", "description": "Geostrophic Velocity V"}),
+
+        "velocity": (("time", "x", "y"), vel_all,
+                     {"units": "m/s", "description": "Geostrophic Velocity Magnitude"}),
+
+        "vorticity": (("time", "x", "y"), zetag_all,
+                      {"units": "1/f", "description": "Geostrophic Relative Vorticity"}),
+
+        "lat_full": (("y_full", "x_full"), karin.lat_full,
+                     {"units": "degrees_north"}),
+
+        "lon_full": (("y_full", "x_full"), karin.lon_full,
+                     {"units": "degrees_east"}),
     },
+
     coords={
         "time": (("time",), time_axis),
-        "x":    (("x",), x_axis, {"units": "km", "description": "X distance"}),
-        "y":    (("y",), y_axis, {"units": "km", "description": "Y distance"}),
+
+        "x": (("x",), x_axis,
+              {"units": "km", "description": "X distance"}),
+
+        "y": (("y",), y_axis,
+              {"units": "km", "description": "Y distance"}),
+
+        # full-grid indices (no flattening)
+        "x_full": (("x_full",), np.arange(nx_full),
+                   {"description": "Full KaRIn x indices"}),
+
+        "y_full": (("y_full",), np.arange(ny_full),
+                   {"description": "Full KaRIn y indices"}),
     },
+
     attrs={
         "title": f"SWOT Balanced Extraction Pass {pass_number}",
         "smoothing_scale_rho": f"{RHO_L_KM} km",

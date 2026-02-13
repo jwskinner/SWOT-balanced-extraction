@@ -184,7 +184,7 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                     # Calculate fraction of bad points
                     bad_frac = np.sum(qual != 0) / total_pts if total_pts > 0 else 1.0
                     
-                    if bad_frac > 0.20:
+                    if bad_frac > 0.10: # 10% threshold on bad data then drop cycle
                         drop_cycle = True
                         break # Stop checking sides, the whole cycle is dead
                 
@@ -215,24 +215,6 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                     tide = data['internal_tide_hret'][indx, i0:i1]
                     lat  = data['latitude'][indx, i0:i1]
                     lon  = data['longitude'][indx, i0:i1]
-
-                    # testing crossover correction plot
-                    # if n != 0:
-                    #     fig, axes = plt.subplots(2, 1, figsize=(10, 4), sharex=True)
-                    #     for side, ax in zip([0, 1], axes):
-                    #         ssha_combined = ssha + xcor + tide
-                    #         x_cor_mean = np.nanmean(ssha_combined, axis=0)
-                    #         ax.plot(x_cor_mean)
-                    #         ax.set_title(f"Side {side}")
-                    #         if side == 0:
-                    #             ax.set_ylim(-0.1, 0.1)
-                    #         else: 
-                    #             ax.set_ylim(-0.1, 0.1)
-                    
-                    #     fig.suptitle(f"SSHA [m] – index {n}")
-                    #     frame_path = f"./scratch/frame_{n:04d}.png"
-                    #     plt.savefig(frame_path, dpi=150)
-                    #     plt.show()
 
                     karin.lat_full = np.array(data.variables['latitude'][indx,:], copy=True)
                     karin.lon_full = np.array(data.variables['longitude'][indx,:], copy=True)
@@ -335,7 +317,7 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
     print(f"Number of Quality Masked KaRIn strips : {len(karin.bad_strips_quality)}")
     print(f"Number of High Variance strips removed : {len(karin.removed_strips_high_variance)}")
     print(f"Number of Good Cycles: {len(cycles_passed_quality)}")
-    print(f"Number of Cycles dropped (>20% masked): {len(cycles_dropped_quality)}")
+    print(f"Number of Cycles dropped (>10% masked): {len(cycles_dropped_quality)}")
     print(f"----------------------------------\n")
 
     if verbose:
@@ -451,13 +433,13 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
             tide = group['internal_tide_hret'][indxs]
             ssha = group['ku']['ssha'][indxs] + tide
 
-            # ---  20% threshold bad quality points ---
+            # ---  10% threshold bad quality points ---
             total_pts = ssha.size
             if total_pts > 0:
                 num_bad_pts = np.sum(ssha.mask)
                 bad_frac = num_bad_pts / total_pts
-                if bad_frac > 0.20:
-                    print(f"Nadir Cycle {cycle} dropped: >20% bad-quality nadir points ({bad_frac:.2%}).")
+                if bad_frac > 0.10:
+                    print(f"Nadir Cycle {cycle} dropped: >10% bad-quality nadir points ({bad_frac:.2%}).") # tried 20 but 10 better
                     num_bad_cycles += 1
                     continue
 
