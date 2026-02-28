@@ -19,13 +19,17 @@ t = swot.Timer()
 
 #data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
-pass_number = 354
-lat_min = 22 #28
-lat_max = 30 #35
-RHO_L_KM = 4.0  # Gaussian smoothing scale; 0 = no smoothing
+pass_number = 295
+lat_min = 30.0 #28
+lat_max = 37.0 #35
+RHO_L_KM = 4.0  # Gaussian smoothing scale in reconstruction; 0 = no smoothing
 
-if len(sys.argv) > 1: # we can replace the pass_number in as an argument 
+if len(sys.argv) > 1: # pass number as command line argument
     pass_number = int(sys.argv[1])
+
+if len(sys.argv) > 3: #lat range as command line arguments
+    lat_min = float(sys.argv[2])
+    lat_max = float(sys.argv[3])
 
 outdir = f"./balanced_extraction/SWOT_data_VD/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
@@ -39,8 +43,8 @@ _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(
     data_folder, pass_number
 )
 
-# Use some file index to get track length
-sample_index = 2  # in case the first one has NaNs
+sample_index = swot.get_best_sample_index(karin_files, lat_min, lat_max) # find the best sample index based on quality flags in the KaRIn data
+
 indx, track_length = swot.get_karin_track_indices(
     karin_files[sample_index][0], lat_min, lat_max
 )
@@ -54,6 +58,7 @@ dims = [len(shared_cycles), track_length, track_length_nadir]
 # INIT DATA CLASSES & LOAD DATA
 # --------------------------------------------------
 karin, nadir = swot.init_swot_arrays(dims, lat_min, lat_max, pass_number)
+karin.sample_index = sample_index
 
 # Load and process KaRIn
 swot.load_karin_data(karin_files, lat_min, lat_max, karin, verbose=False)
@@ -141,8 +146,8 @@ Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             #
 sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # [cm]
 
 # Wavenumber grid for transforms
-n_samples = 100000
-l_sample = 5000
+n_samples = 200000
+l_sample = 10000
 kk = np.arange(n_samples // 2 + 1) / l_sample  # [cpkm]
 
 dk = kk[1] - kk[0]
@@ -227,6 +232,11 @@ for t_idx in good_indices:
     C_obs_t = C_obs_full[np.ix_(obs_mask, obs_mask)]
     R_t     = R_full[:, obs_mask]
 
+    # eigvals = np.linalg.eigvalsh(C_obs_t)
+    # print("Min eigenvalue:", eigvals.min())
+    # print("Max eigenvalue:", eigvals.max())
+    # print("Condition number:", eigvals.max()/eigvals.min())
+
     # Build observation vector h_obs_t in same master ordering
     # KaRIn
     h_k_full_flat = karin.ssha[t_idx].ravel(order="C")
@@ -245,8 +255,15 @@ for t_idx in good_indices:
         cho_t = la.cho_factor(C_obs_t, lower=True, check_finite=False)
         z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
     except la.LinAlgError as e:
-        print(f"Cholesky failed at time {t_idx}: {e}")
-        continue
+        print(f"Cholesky failed at time {t_idx}: {e}. Adding jitter and retrying.")
+        try:
+            C_jitter = C_obs_t + np.eye(len(h_obs_t)) * 1e-6 # adds a 1e-6 cm^2 jitter to the diagonal
+            cho_t = la.cho_factor(C_jitter, lower=True, check_finite=False)
+            z_t   = la.cho_solve(cho_t, h_obs_t, check_finite=False)
+            print(f"  Success with jitter = 1e-4")
+        except la.LinAlgError as e2:
+            print(f"  Jitter failed: {e2}. Skipping time {t_idx}.")
+            continue
 
     # Posterior mean on target grid
     ht_t = R_t @ z_t                      

@@ -6,6 +6,7 @@ import xrft
 
 class KarinData:
     def __init__(self, num_cycles, track_length, lat_min, lat_max, pass_number):
+         # --- Swath ---
         self.swath_width = 25
         self.middle_width = 9 
         self.num_cycles = num_cycles
@@ -19,7 +20,7 @@ class KarinData:
         self.lat_max = lat_max
         self.pass_number = pass_number
 
-        # --- Spectra attributes ---
+        # --- Spectra ---
         self.spec_ssh = None
         self.spec_tmean = None
         self.spec_filt_tmean = None
@@ -33,6 +34,9 @@ class KarinData:
         self.cycle_dates = None          # np.datetime64[ns] (num_cycles,)
 
     def coordinates(self):
+        """
+        Generates the coordinates and grids for the KaRIn data
+        """
         # Convert the lats and lons to a grid in km
         self.x_km, self.y_km = swot.convert_to_xy_grid(self) # returns the euclidian grid spacing in km from the lat/lon coordinates
         x_min, x_max = np.nanmin(self.x_km), np.nanmax(self.x_km)
@@ -43,7 +47,7 @@ class KarinData:
         print(f"Y grid range (km): {y_min:.2f} to {y_max:.2f} (span: {y_max - y_min:.2f} km)")
 
         track_length = np.nanmax(self.y_km) - np.nanmin(self.y_km)
-        x_row = self.x_km[self.x_km.shape[0] // 2, :]
+        x_row = self.x_km[self.sample_index, :]
         sorted_x = np.sort(x_row[~np.isnan(x_row)])
         total_swath_width = (sorted_x.max() - sorted_x.min())
         swath_width = total_swath_width / 2
@@ -89,6 +93,7 @@ class KarinData:
 
     def compute_spectra(self):
         """Computes all power spectra for the Karin data."""
+        
         print("Computing KaRIn spectra...")
         
         # 1. dims, window and coordinates
@@ -156,24 +161,75 @@ class NadirData:
         self.lon_full = None
     
     def coordinates(self):
-        self.x_km, self.y_km = swot.convert_to_xy_grid(self, self.karin)
+        """
+        Generates the coordinates and grids for the Nadir data
+        """
 
+        # 1. compute the average seperation of two nadir points along the track
+        self.x_km, self.y_km = swot.convert_to_xy_grid(self, self.karin) # x and y vals in km
         delta_x = np.diff(self.x_km)
         delta_y = np.diff(self.y_km)
         distances = np.sqrt(delta_x**2 + delta_y**2)
-        self.dy_km = np.nanmean(distances)
+        self.dy_km = np.nanmean(distances) # get the average nadir spacing
         self.dy = self.dy_km * 1.0e3 # Convert to meters
         print(f"Nadir spacing: dy = {self.dy_km:.2f} km")
 
-        y_idx = np.arange(self.track_length) + 0.5 # include the extra pixel from half-grid shift
-        self.y_coord = self.dy * y_idx 
-        self.y_coord_km = self.y_coord * 1e-3
+        # 2. compute haversine distance between first KaRIn point and first nadir point
+        sample_idx = self.karin.sample_index # index of a cycle with full KaRIn data
+
+        # check if the pass is ascending or descending
+        if np.nanmean(self.lat[sample_idx, 0]) > np.nanmean(self.lat[sample_idx, -1]):
+            nadir_first_lat = float(self.lat[sample_idx, -1])
+        else:
+            nadir_first_lat = float(self.lat[sample_idx, 0])
+    
+        karin_lat_min = self.karin.lat_min
+        mean_lon = float(np.nanmean(self.lon[sample_idx, :]))
+    
+        R = 6371.0  # Earth radius in km
+        lat1, lat2 = np.radians(karin_lat_min), np.radians(nadir_first_lat)
+        delta_lat_km = R * abs(lat2 - lat1)
         
+        if nadir_first_lat < karin_lat_min:
+            delta_lat_km = -delta_lat_km # flips the offset if this is descending pass
+        
+        print(f"Nadir offset {delta_lat_km:.2f} km") # offset between first KaRIn and first nadir point
+
+        # 3. Build the nadir grids
+        y_idx = np.arange(self.track_length) # array of nadir points along nadir track
+
+        # nadir grid is npoints x dy + KaRIn offset + the half grid spacing from KaRIn
+        self.y_coord = (self.dy * y_idx) + (delta_lat_km * 1e3) + (0.5 * self.karin.dx) 
+        self.y_coord_km = self.y_coord * 1e-3
+
+        # 4. enforce the KaRIn boundary, our final Nadir point cannot be outside of our final KaRIn point
+        # this is a rare edge case which depends on the chosen latitude bounds
+        karin_max_y = np.nanmax(self.karin.y_coord_km) # karin max scale
+        
+        # Create a mask of indices where nadir Y stays within the KaRIn limits
+        valid_idx = self.y_coord_km <= karin_max_y
+        if np.any(~valid_idx):
+            print("Cropped nadir points:", np.sum(~valid_idx))
+
+        # Truncate the spatial coordinates
+        self.y_coord = self.y_coord[valid_idx]
+        self.y_coord_km = self.y_coord_km[valid_idx]
+        
+        # Truncate all the arrays
+        self.ssh = self.ssh[:, valid_idx]
+        self.ssha = self.ssha[:, valid_idx]
+        self.lat = self.lat[:, valid_idx]
+        self.lon = self.lon[:, valid_idx]
+        self.track_length = len(self.y_coord)
+
+        # 5. Build the final nadir grids
+        # find the center of the KaRIn grid for the nadir points. 
         center_x_position = (self.karin.total_width * self.karin.dx) / 2.0
         self.x_coord = np.array([center_x_position])
         self.x_coord_km = self.x_coord * 1e-3
         self.x_grid, self.y_grid = np.meshgrid(self.x_coord, self.y_coord)
 
+        # assign a time corrdinate for the nadir data
         self.t_coord = np.arange(self.num_cycles)
 
     def compute_spectra(self):

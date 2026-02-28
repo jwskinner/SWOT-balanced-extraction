@@ -10,25 +10,20 @@ from datetime import datetime
 
 def plot_grids(karin, nadir):
     
-    plt.figure(figsize=(6, 6), dpi=150)
-    plt.scatter(nadir.x_km, nadir.y_km, s=1)
-    plt.scatter(karin.x_km, karin.y_km, s=1)
+    plt.figure(figsize=(3, 3), dpi=150)
+    plt.scatter(nadir.x_km, nadir.y_km, s=0.01)
+    plt.scatter(karin.x_km, karin.y_km, s=0.01)
 
-    # Create the scatter plot
-    plt.figure(figsize=(6, 6), dpi=150)
-    plt.scatter(karin.x_obs_grid*1e-3, karin.y_obs_grid*1e-3, s=5, alpha=0.5, label = "KaRIn obs")
-    plt.scatter(karin.x_grid*1e-3, karin.y_grid*1e-3, s=1, alpha=0.5,label = "Full Grid")
-    plt.scatter(nadir.x_grid*1e-3, nadir.y_grid*1e-3, s=1, alpha=1.0, label = "Nadir obs")
+    plt.figure(figsize=(6, 3), dpi=150)
+    plt.scatter(karin.y_obs_grid*1e-3, karin.x_obs_grid*1e-3, s=5, alpha=0.5, label = "KaRIn obs")
+    plt.scatter(karin.y_grid*1e-3, karin.x_grid*1e-3, s=1, alpha=0.5,label = "Full Grid")
+    plt.scatter(nadir.y_grid*1e-3, nadir.x_grid*1e-3, s=1, alpha=1.0, label = "Nadir obs")
 
     plt.title('Scatter Plot of Synthetic Grid Coordinates')
     plt.xlabel('Cross-Track Distance (km)')
     plt.ylabel('Along-Track Distance (km)')
-    plt.legend()
+    # plt.legend()
 
-    # Add grid lines and ensure correct aspect ratio
-    plt.grid(True, linestyle='--', alpha=0.5)
-
-    # Display the plot
     plt.tight_layout()
     plt.show()
 

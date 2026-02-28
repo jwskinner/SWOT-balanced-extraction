@@ -16,8 +16,11 @@ import jws_swot_tools as swot
 from netCDF4 import num2date
 
 #  ------- Functions for loading and processing SWOT data
-# Loads the SWOT files from the specified folder and aligns the KaRIn and Nadir files based on their cycles.
 def return_karin_files(filepath, pnum, basic = True):
+    """
+    Loads the SWOT files from the specified folder and aligns 
+    the KaRIn and Nadir files based on their cycles.
+    """
     all_files = glob(filepath)
     files_with_numbers = [] # now order by pass to get order in time
     for filename in all_files:
@@ -73,6 +76,48 @@ def return_swot_files(folder, pnum, nadir_folder=None, basic=True):
 
     return karin_files_with_numbers, nadir_files_with_numbers, shared_cycles, karin_aligned, nadir_aligned
 
+def get_best_sample_index(karin_files, lat_min, lat_max, swath_width=25):
+    """
+    Returns the index of the most complete KaRIn file for the analysis
+    """
+    best_index = 0
+    lowest_bad_count = float('inf')
+    
+    for n, (filename, cycle) in enumerate(karin_files):
+        try:
+            with nc.Dataset(filename, 'r') as data:
+                fp_latitude = data['latitude'][:]
+                mid_col = fp_latitude.shape[1] // 2
+                lat_center = fp_latitude[:, mid_col]
+                indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
+                
+                if indx.size == 0:
+                    continue
+                
+                bad_count = 0
+                for side in [0, 1]:
+                    i0 = 34 * side + 5
+                    i1 = i0 + swath_width
+                    qual = data['ssha_karin_2_qual'][indx, i0:i1]
+                    bad_count += np.sum(qual != 0)
+                
+                if bad_count == 0:
+                    print(f"Sample file found at index {n} (Cycle {cycle}).")
+                    return n
+                    
+                if bad_count < lowest_bad_count:
+                    lowest_bad_count = bad_count
+                    best_index = n
+                    
+        except Exception:
+            continue
+            
+    if lowest_bad_count == float('inf'):
+        print("All files are bad or contain no data in the specified latitude range.")
+    else:
+        print(f"Defaulting to best index {best_index} (lowest bad pixel count: {lowest_bad_count}).")
+
+    return best_index
 
 def init_swot_arrays(num_shared_cycles, track_length, total_width, track_length_nadir):
     """
@@ -92,7 +137,7 @@ def init_swot_arrays(num_shared_cycles, track_length, total_width, track_length_
 # Returns the indices of the track in the KaRIn file that fall within the specified latitude range.
 def get_karin_track_indices(karin_file, lat_min, lat_max):
     
-    if lat_min > lat_max: # I made this mistake too many times...
+    if lat_min > lat_max: 
         print("Error: lat_max must be larger than lat_min.")
         return [], 0
     
@@ -114,7 +159,7 @@ def get_nadir_track_indices(nadir_file, lat_min, lat_max, nadir_dy=None):
     lats_fp = nadir_ref['data_01']['latitude'][:] 
     indxs = np.where((lats_fp >= lat_min) & (lats_fp <= lat_max))[0]
     track_length_nadir = len(indxs) 
-    if track_length_nadir ==0: 
+    if track_length_nadir == 0: 
         print("Nadir track length = 0, choose different sampling index")
     nadir_ref.close()
     
