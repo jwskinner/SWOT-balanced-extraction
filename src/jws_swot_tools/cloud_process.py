@@ -87,6 +87,7 @@ def return_cloud_files(pass_num,
 
     print(" ")
     print("Searching Earthaccess ...")
+    
     # Search for all granules matching this pass
     karin_results = earthaccess.search_data(
         short_name = karin_short_name,

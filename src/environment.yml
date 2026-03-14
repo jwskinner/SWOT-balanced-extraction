@@ -1,0 +1,27 @@
+name: be
+channels:
+  - conda-forge
+dependencies:
+  # Core Python version
+  - python=3.12
+  - pip
+  
+  # Conda dependencies
+  - numpy
+  - xarray
+  - scipy
+  - matplotlib
+  - netcdf4
+  - xrft
+  - pandas
+  - earthaccess
+  - h5py
+  - pyproj
+  - cmocean
+  - cartopy
+  - ipython
+  - pyjuliacall
+  
+  # Build the module with pip
+  - pip:
+    - -e .

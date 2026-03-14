@@ -11,6 +11,7 @@ import jws_swot_tools as swot
 import xarray as xr
 from jws_swot_tools.julia_bridge import julia_functions as jl
 import pickle
+from concurrent.futures import ProcessPoolExecutor
 
 # --------------------------------------------------
 # CONFIG
@@ -19,10 +20,11 @@ t = swot.Timer()
 
 #data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
-pass_number = 295
+pass_number = 17
 lat_min = 30.0 #28
-lat_max = 37.0 #35
+lat_max = 38.0 #35
 RHO_L_KM = 4.0  # Gaussian smoothing scale in reconstruction; 0 = no smoothing
+include_nadir = False # if false do not use nadir data in the balanced extraction (but still use it for spectral fits and plotting)
 
 if len(sys.argv) > 1: # pass number as command line argument
     pass_number = int(sys.argv[1])
@@ -31,7 +33,7 @@ if len(sys.argv) > 3: #lat range as command line arguments
     lat_min = float(sys.argv[2])
     lat_max = float(sys.argv[3])
 
-outdir = f"./balanced_extraction/SWOT_data_VD/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+outdir = f"./balanced_extraction/SWOT_data_VD_NoNad/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
 
@@ -146,8 +148,8 @@ Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             #
 sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # [cm]
 
 # Wavenumber grid for transforms
-n_samples = 200000
-l_sample = 10000
+n_samples = 200000 
+l_sample = 10000 
 kk = np.arange(n_samples // 2 + 1) / l_sample  # [cpkm]
 
 dk = kk[1] - kk[0]
@@ -190,13 +192,21 @@ R_tt  = np.asarray(C_BG2(r_tt), dtype=np.float64)                              #
 R_tK_full = np.asarray(C_BTG(r_tk_full), dtype=np.float64)                     # Target-KaRIna
 R_tN_full = np.asarray(C_BG(r_tn_full), dtype=np.float64)                      # Target-Nadir
 
-# Full observation covariance for all potential points
-C_obs_full = np.block([
-    [R_KK_full, R_KN_full],
-    [R_NK_full, R_NN_full]
-])
-R_full = np.concatenate([R_tK_full, R_tN_full], axis=1)
+if include_nadir: 
+    # Full covariance and cross-covariance matrices for the combined observations
+    C_obs_full = np.block([
+        [R_KK_full, R_KN_full],
+        [R_NK_full, R_NN_full]
+    ])
+    R_full = np.concatenate([R_tK_full, R_tN_full], axis=1)
+
+else: 
+    C_obs_full = R_KK_full
+    R_full = R_tK_full
+
 t.lap("Covariance matrices built")
+
+cho = la.cho_factor(C_obs_full, lower=True)
 
 # --------------------------------------------------
 # LOOP OVER TIME
@@ -211,44 +221,35 @@ zetag_all = np.full((ntimes, nxt, nyt), np.nan, dtype=float)
 good_indices = [i for i, cyc in enumerate(shared_cycles) if cyc in karin.good_cycles]
 print(f"Good time indices: {good_indices}")
 print("Starting Time Loop")
+
 for t_idx in good_indices:
     print(f"--- Time index {t_idx+1}/{ntimes} ---")
 
     mk_t_full_flat = np.isfinite(karin.ssha[t_idx]).ravel(order="C")
-    mn_t_full_flat = np.isfinite(nadir.ssha[t_idx]).ravel()
-
     mk_t = mk_t_full_flat[mask_k_master_flat]
-    mn_t = mn_t_full_flat[mask_n_master_flat]
 
-    # Combined observation mask
-    obs_mask = np.concatenate([mk_t, mn_t])
+    if include_nadir:
+        mn_t_full_flat = np.isfinite(nadir.ssha[t_idx]).ravel()
+        mn_t = mn_t_full_flat[mask_n_master_flat]
+        obs_mask = np.concatenate([mk_t, mn_t])
+    else:
+        obs_mask = mk_t
 
     n_obs_t = obs_mask.sum()
     if n_obs_t == 0:
         print(f"Time {t_idx}: no valid observations, skipping.")
         continue
 
-    # Slice covariance for this time
     C_obs_t = C_obs_full[np.ix_(obs_mask, obs_mask)]
     R_t     = R_full[:, obs_mask]
 
-    # eigvals = np.linalg.eigvalsh(C_obs_t)
-    # print("Min eigenvalue:", eigvals.min())
-    # print("Max eigenvalue:", eigvals.max())
-    # print("Condition number:", eigvals.max()/eigvals.min())
+    h_k_t = karin.ssha[t_idx].ravel(order="C")[mask_k_master_flat][mk_t] * 100.0
 
-    # Build observation vector h_obs_t in same master ordering
-    # KaRIn
-    h_k_full_flat = karin.ssha[t_idx].ravel(order="C")
-    h_k_master    = h_k_full_flat[mask_k_master_flat]   # KaRIn master points
-    h_k_t         = h_k_master[mk_t] * 100.0            # [cm]
-
-    # Nadir
-    h_n_full_flat = nadir.ssha[t_idx].ravel()
-    h_n_master    = h_n_full_flat[mask_n_master_flat]   # Nadir master points
-    h_n_t         = h_n_master[mn_t] * 100.0            # [cm]
-
-    h_obs_t = np.concatenate([h_k_t, h_n_t])
+    if include_nadir:
+        h_n_t = nadir.ssha[t_idx].ravel()[mask_n_master_flat][mn_t] * 100.0
+        h_obs_t = np.concatenate([h_k_t, h_n_t])
+    else:
+        h_obs_t = h_k_t
 
     # Solve (C_obs_t) z_t = h_obs_t
     try:

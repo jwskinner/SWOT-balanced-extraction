@@ -136,8 +136,9 @@ SWOT_*/
 # Ignore all created movies 
 *.mp4
 
-# Ingnore Scratch 
+# Ingnore Scratch and tmp
 scratch/
+tmp/
 
 # ingnore synthetic swot data folder
 synthetic_swot_data/

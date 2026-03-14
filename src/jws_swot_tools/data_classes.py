@@ -206,21 +206,21 @@ class NadirData:
         # this is a rare edge case which depends on the chosen latitude bounds
         karin_max_y = np.nanmax(self.karin.y_coord_km) # karin max scale
         
-        # Create a mask of indices where nadir Y stays within the KaRIn limits
-        valid_idx = self.y_coord_km <= karin_max_y
-        if np.any(~valid_idx):
-            print("Cropped nadir points:", np.sum(~valid_idx))
+        # [optional] Create a mask of indices where nadir Y is confined to the KaRIn limits
+        # valid_idx = self.y_coord_km <= karin_max_y
+        # if np.any(~valid_idx):
+        #     print("Cropped nadir points:", np.sum(~valid_idx))
 
-        # Truncate the spatial coordinates
-        self.y_coord = self.y_coord[valid_idx]
-        self.y_coord_km = self.y_coord_km[valid_idx]
+        # # Truncate the spatial coordinates
+        # self.y_coord = self.y_coord[valid_idx]
+        # self.y_coord_km = self.y_coord_km[valid_idx]
         
-        # Truncate all the arrays
-        self.ssh = self.ssh[:, valid_idx]
-        self.ssha = self.ssha[:, valid_idx]
-        self.lat = self.lat[:, valid_idx]
-        self.lon = self.lon[:, valid_idx]
-        self.track_length = len(self.y_coord)
+        # # Truncate all the arrays
+        # self.ssh = self.ssh[:, valid_idx]
+        # self.ssha = self.ssha[:, valid_idx]
+        # self.lat = self.lat[:, valid_idx]
+        # self.lon = self.lon[:, valid_idx]
+        # self.track_length = len(self.y_coord)
 
         # 5. Build the final nadir grids
         # find the center of the KaRIn grid for the nadir points. 

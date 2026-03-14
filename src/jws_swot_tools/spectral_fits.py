@@ -77,8 +77,8 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
         initial_guess = [2.5e1, 200, 4.6, 10.0, 100, 1.3]
     
     if bounds is None:
-        lower_bounds = [0.0,   10.0,   0.5,  0.0,   100.0,    1.]
-        upper_bounds = [1e9, 300.0,  10.0, 1e9, 100.01,   3.0]
+        lower_bounds = [0.0, 10.0, 0.5, 0.0, 100.0, 1.0]
+        upper_bounds = [1e9, 2000.0, 8.0, 1e9, 100.01, 3.0]
         bounds = (lower_bounds, upper_bounds)
 
     # Fit the model (excluding zero)
@@ -99,6 +99,11 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
         for name, param, err in zip(params, popt, perr):
             print(f"{name:<{max_len}} : {param:12.4e} ± {err:.2e}")
         print("")
+    
+    # add to karin class 
+    data.popt_karin = popt
+    data.pcov_karin = pcov
+
     return popt, pcov
 
 
@@ -139,5 +144,9 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
     print("---- Nadir spectrum parameters ----")
     print(f"Fitted Nadir noise floor N = {popt[0]} ± {perr[0]:.2e}")
     print("")
+
+    # add to nadir class 
+    data.popt_nadir = popt
+    data.pcov_nadir = pcov
 
     return popt, pcov
