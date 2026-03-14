@@ -136,11 +136,11 @@ SWOT_*/
 # Ignore all created movies 
 *.mp4
 
-# Ingnore Scratch and tmp
+# Ignore Scratch and tmp
 scratch/
 tmp/
 
-# ingnore synthetic swot data folder
+# Ignore synthetic swot data folder
 synthetic_swot_data/
 
 # Ignore balanced extraction paper folder
