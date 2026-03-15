@@ -145,3 +145,6 @@ synthetic_swot_data/
 
 # Ignore balanced extraction paper folder
 balanced_extraction_paper/aviso.txt
+
+# aviso login details
+aviso.txt

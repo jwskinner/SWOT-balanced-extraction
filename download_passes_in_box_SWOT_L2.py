@@ -12,10 +12,7 @@ import jws_swot_tools as swot
 
 # --------------------------------------------------
 # CONFIG
-lat_min, lat_max, lon_min, lon_max = [30.0, 38.0, 154.0, 162.0]
-# SO Region: [-59.0, -51.0, 144.0, 152.0]
-# KE region 1: [30.0, 38.0, 154.0, 162.0]
-# KE region 2: [22.0, 30.0, 154.0, 162.0] 
+lat_min, lat_max, lon_min, lon_max = [-58.0, -50.0, -152.0, -140.0]
 
 tmin = "2023-07-10 00:00:00"
 tmax = "2026-03-20 23:59:59"
@@ -26,6 +23,13 @@ download_dir = "/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/"
 download     = True       # download the passes or just plot them
 min_points   = 25000      # minimum data points inside box needed to count as a valid pass
 min_granules = 100        # minimum number of granules a pass must have to be included
+
+# Output box size in km
+lat0 = (lat_min + lat_max) / 2.0
+R = 6371.0
+box_x_km = R * np.radians(lon_max - lon_min) * np.cos(np.radians(lat0))
+box_y_km = R * np.radians(lat_max - lat_min)
+print(f"Box size: {box_x_km:.1f} km (x) x {box_y_km:.1f} km (y)")
 
 # --------------------------------------------------
 # FIND PASSES IN BOUNDING BOX
@@ -54,14 +58,14 @@ def pass_covers_box(filepath, lat_min, lat_max, lon_min, lon_max, min_points=100
     a box when their lat-lon data is either missing or does not intersect the box at all. 
     """
     with nc.Dataset(filepath) as ds:
-        lat = ds.variables["latitude"][:].ravel()
-        lon = ds.variables["longitude"][:].ravel()
-        lon[lon < 0] += 360
-        inside = (
-            (lat >= lat_min) & (lat <= lat_max) &
-            (lon >= lon_min) & (lon <= lon_max)
-        )
-        n_inside = int(np.sum(inside))
+            lat = ds.variables["latitude"][:].ravel()
+            lon = ds.variables["longitude"][:].ravel()
+            lon = (lon + 180) % 360 - 180
+            inside = (
+                (lat >= lat_min) & (lat <= lat_max) &
+                (lon >= lon_min) & (lon <= lon_max)
+            )
+            n_inside = int(np.sum(inside))
     return n_inside >= min_points, n_inside
 
 # Group granules by pass
@@ -89,7 +93,7 @@ print(f"  {pass_list}")
 # PLOT FIRST FRAME OF EACH PASS
 tmp_dir = "./tmp"
 os.makedirs(tmp_dir, exist_ok=True)
-pad_deg = 20  # pad the map on each side to give context around the box
+pad_deg = 30  # pad the map on each side to give context around the box
 
 fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={"projection": ccrs.PlateCarree()})
 ax.set_extent([
