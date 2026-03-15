@@ -63,9 +63,10 @@ A full description of the methodology is available in the following paper:
 > Skinner, J. W., Callies, J., Lawrence, A., and Zhang, X. (2025). **Isolating Balanced Ocean Dynamics in SWOT Data**. *Submitted to JGR Oceans.*
 > [arXiv:2512.03258](https://arxiv.org/abs/2512.03258)
 
-<figure>
+<figure align="center">
   <img src="balanced_extraction_paper/balanced_extraction.png" alt="Balanced Extraction"/>
-  <figcaption><em>Example of the balanced extraction applied to SWOT SSHA data on pass 9, cycle 483. (a) Observed SSHA data from KaRIn (swaths) and nadir. (b) Extracted balanced SSHA field estimated from the observed SSHA. (c) Geostrophic speed of the extracted balanced SSHA field. (d) Geostrophic vorticity derived from the extracted balanced SSHA and normalized by the planetary vorticity.</em></figcaption>
+  <figcaption> Example of the balanced extraction applied to SWOT SSHA data on pass 9, cycle 483. (a) Observed SSHA data from KaRIn (swaths) and nadir. (b) Extracted balanced SSHA field estimated from the observed SSHA. (c) Geostrophic speed of the extracted balanced SSHA field. (d) Geostrophic vorticity derived from the extracted balanced SSHA and normalized by the planetary vorticity. </figcaption>
 </figure>
+
 
 The scripts and datafiles used to create the figures in the paper are in the folder `balanced_extraction_paper/`.
