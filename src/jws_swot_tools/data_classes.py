@@ -143,6 +143,15 @@ class KarinData:
         self.wavenumbers_ang = waves['ang']
         self.wavenumbers_length = waves['length']
 
+        # 6. add a variable "good_lines" to the KaRIn class which counts how many 
+        # along-track lines have valid data that was used in spectral estimate 
+        # for each time step.
+        no_nan_mask = ~np.any(np.isnan(self.ssha), axis=1)   # (num_cycles, total_width)
+        self.good_lines_total = int(np.sum(no_nan_mask))
+        self.good_lines_per_cycle = np.sum(no_nan_mask, axis=-1)
+        print(f"KaRIn good lines: {self.good_lines_total}")
+        print(f"KaRIn good lines per cycle: {self.good_lines_per_cycle}")
+
 class NadirData:
     def __init__(self, num_cycles, track_length_nadir, lat_min, lat_max, pass_number):
         self.num_cycles = num_cycles

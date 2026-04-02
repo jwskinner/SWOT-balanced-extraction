@@ -24,7 +24,6 @@ def balanced_model_tapered(k, A_b, lam, s_param, cutoff=2.0):
     sp = A_b / (1.0 + (lam * k)**s_param) # base balanced spectrum
     return sp * taper(k, cutoff)
 
-
 def unbalanced_model_notaper(k, A_n, lam_n, s_n):
     '''Model of unbalanced component without a Guassian taper at high wavenumbers'''
     lam_n = 1e2 # set to 100km because it is not well constrained
