@@ -60,9 +60,11 @@ def unbalanced_model_old(k, A_n, lam_n, s_n, cutoff=2.0):
     sp = A_n / (1 + (lam_n * k)**2)**(s_n/2)
     return sp * taper
 
-def karin_model(k, A_b, lam_b, s_param, A_n, lam_n, s_n):
-    #return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model(k, A_n, lam_n, s_n))
-    return np.log(balanced_model_tapered(k, A_b, lam_b, s_param) + unbalanced_model_tapered(k, A_n, lam_n, s_n))
+def karin_model(k, A_b, lam_b, s_param, A_n, lam_n, s_n, taper=False):
+    if taper:
+        return np.log(balanced_model_tapered(k, A_b, lam_b, s_param) + unbalanced_model_tapered(k, A_n, lam_n, s_n))
+    else: 
+        return np.log(balanced_model(k, A_b, lam_b, s_param) + unbalanced_model_notaper(k, A_n, lam_n, s_n))
 
 def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose = True):
     '''Fits the balanced/unbalanced models to the averaged power spectrum'''
@@ -74,11 +76,11 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
 
     # Defaults for initial guess and bounds
     if initial_guess is None:
-        initial_guess = [2.5e1, 200, 4.6, 10.0, 100, 1.3]
+        initial_guess = [2.5e3, 200, 4.6, 100.0, 100, 1.3]
     
     if bounds is None:
-        lower_bounds = [0.0, 10.0, 0.5, 0.0, 100.0, 1.0]
-        upper_bounds = [1e9, 2000.0, 8.0, 1e9, 100.01, 3.0]
+        lower_bounds = [0.0, 10.0, 3.0, 0.0, 100.0, 0.0]
+        upper_bounds = [1e9, 1e3, 7.0, 1e9, 100.01, 5.0]
         bounds = (lower_bounds, upper_bounds)
 
     # Fit the model (excluding zero)
@@ -107,7 +109,7 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
     return popt, pcov
 
 
-def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds=None):
+def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds=None, verbose=True):
     ''' Fit only the noise parameter N in the nadir model, with balanced parameters fixed from KaRIn fit. '''
 
     k = data.wavenumbers_cpkm[int(data.track_length/2):]
@@ -119,7 +121,7 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
     lam_b_fixed   = poptcwg_karin[1]
     s_param_fixed = poptcwg_karin[2]
 
-    # Wrapper model: only N is a free parameter!
+    # Only N is a free parameter
     def model_fixed(k, N):
         return nadir_model(k, A_b_fixed, lam_b_fixed, s_param_fixed, N)
 
@@ -140,10 +142,12 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
     )
 
     perr = np.sqrt(np.diag(pcov))
-    print("") 
-    print("---- Nadir spectrum parameters ----")
-    print(f"Fitted Nadir noise floor N = {popt[0]} ± {perr[0]:.2e}")
-    print("")
+
+    if verbose:
+        print("") 
+        print("---- Nadir spectrum parameters ----")
+        print(f"Fitted Nadir noise floor N = {popt[0]} ± {perr[0]:.2e}")
+        print("")
 
     # add to nadir class 
     data.popt_nadir = popt

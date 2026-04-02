@@ -100,6 +100,10 @@ swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, f'{outdir}/spectral_fits
 swot.save_spectral_fit_results(f'{outdir}/spectral_fits.out', p_karin, cov_karin, p_nadir, cov_nadir)
 t.lap("Spectral fits complete")
 
+# Save the nadir pickle 
+with open(f"{outdir}/nadir_pass{pass_number:03d}.pkl", "wb") as f:
+    pickle.dump(nadir, f)
+
 # --------------------------------------------------
 # SAVE RAW SWOT DATA
 # --------------------------------------------------
@@ -288,6 +292,7 @@ karin.ug           = ug_all
 karin.vg           = vg_all
 karin.velocity     = vel_all
 karin.vorticity    = zetag_all
+
 with open(f"{outdir}/balanced_extraction_pass{pass_number:03d}.pkl", "wb") as f:
     pickle.dump(karin, f)
 t.lap("Balanced field saved")

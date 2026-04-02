@@ -175,58 +175,64 @@ def plot_ssh_summary(ht, nyt, nxt,
     plt.close(fig)
     print(f"Saved plot to {plot_filename}")
 
-def plot_spectral_fits(karin, nadir, poptcwg_karin, poptcwg_nadir, 
-                               output_filename='swot_karin_nadir_fit.pdf',
-                               figsize=(8, 4), dpi=120):
-    
-    # Get the one-sided spectra
-    k_karin = karin.wavenumbers_cpkm[int(karin.track_length/2):]  # units [1/m]
-    karin_spec_sample_mean = karin.spec_alongtrack_av[int(karin.track_length/2):]
-    k_nadir = nadir.wavenumbers_cpkm[int(nadir.track_length/2):]  # units [1/m]
-    nadir_spec_sample_mean = nadir.spec_alongtrack_av[int(nadir.track_length/2):]
-    
-    # Put the wavenumbers through the models to get the functional form
-    spbalanced = swot.balanced_model_tapered(k_karin[1:], *poptcwg_karin[0:3])
-    spunbalanced = swot.unbalanced_model_tapered(k_karin, *poptcwg_karin[3:7])
+def plot_spectral_fits(karin,
+                       nadir,
+                       poptcwg_karin,
+                       poptcwg_nadir,
+                       spec_k_actual=None,
+                       spec_n_actual=None,
+                       output_filename='swot_karin_nadir_fit.pdf',
+                       figsize=(8, 4),
+                       dpi=120, 
+                       taper=False):
+
+    mid_k = int(karin.track_length / 2)
+    mid_n = int(nadir.track_length / 2)
+
+    k_karin = karin.wavenumbers_cpkm[mid_k:]
+    k_nadir = nadir.wavenumbers_cpkm[mid_n:]
+
+    karin_dots = spec_k_actual[mid_k:] if spec_k_actual is not None else karin.spec_alongtrack_av[mid_k:]
+    nadir_dots = spec_n_actual[mid_n:] if spec_n_actual is not None else nadir.spec_alongtrack_av[mid_n:]
+
+    if taper:
+        spbalanced    = swot.balanced_model_tapered(k_karin[1:], *poptcwg_karin[0:3])
+        spunbalanced  = swot.unbalanced_model_tapered(k_karin, *poptcwg_karin[3:7])
+    else: 
+        spbalanced    = swot.balanced_model(k_karin[1:], *poptcwg_karin[0:3])
+        spunbalanced  = swot.unbalanced_model_notaper(k_karin, *poptcwg_karin[3:7])
     spnoise_nadir = swot.nadir_noise_model(k_nadir, poptcwg_nadir[0])
-    
-    # Create figure
+
     fig, axs = plt.subplots(1, 2, figsize=figsize, dpi=dpi, constrained_layout=True)
-    
+
     # ----- Panel 1: KaRIn -----
-    k_km = k_karin # wavenumbers in cycles/km
-    axs[0].loglog(k_km[1:], karin_spec_sample_mean[1:], 'o', label='KaRIn SSHA')
-    axs[0].loglog(k_km[1:], spunbalanced[1:], 
-                  label=r'$A_n$=%5.1f, $\lambda_n$=%5.1f, $S_n$=%5.1f' % 
+    axs[0].loglog(k_karin[1:], karin_dots[1:], 'o', label='KaRIn SSHA')
+    axs[0].loglog(k_karin[1:], spunbalanced[1:],
+                  label=r'$A_n$=%5.1f, $\lambda_n$=%5.1f, $S_n$=%5.1f' %
                   (poptcwg_karin[3], 100, poptcwg_karin[5]))
-    axs[0].loglog(k_km[1:], spbalanced, 
-                  label=r'$A_b$=%5.1f, $\lambda_b$=%5.1f, $S_b$=%5.1f' % 
+    axs[0].loglog(k_karin[1:], spbalanced,
+                  label=r'$A_b$=%5.1f, $\lambda_b$=%5.1f, $S_b$=%5.1f' %
                   (poptcwg_karin[0], poptcwg_karin[1], poptcwg_karin[2]))
-    axs[0].loglog(k_km[1:], (spunbalanced[1:] + spbalanced), '--', label='Model (sum)')
+    axs[0].loglog(k_karin[1:], spunbalanced[1:] + spbalanced, '--', label='Model (sum)')
     axs[0].set_xlabel('wavenumber (cpkm)')
     axs[0].set_ylabel('PSD (cm$^2$ / cpkm)')
-    # axs[0].set_xlim(1e-3, 3e-1)
     axs[0].set_ylim(1e-5, 1e6)
     axs[0].set_title('KaRIn')
     axs[0].legend(loc='lower left', frameon=False, fontsize=9)
-    
+
     # ----- Panel 2: Nadir -----
-    axs[1].loglog(k_nadir[1:], nadir_spec_sample_mean[1:], 'o', label='Nadir SSHA')
+    axs[1].loglog(k_nadir[1:], nadir_dots[1:], 'o', label='Nadir SSHA')
     axs[1].loglog(k_nadir, spnoise_nadir, label=r'$N$=%5.1f' % (poptcwg_nadir[0]))
     axs[1].loglog(k_karin[1:], spbalanced, '-', label=r'KaRIn balanced model')
-    axs[1].loglog(k_karin[1:], (spbalanced + spnoise_nadir[:1]), '--', label='Model (sum)')
+    axs[1].loglog(k_karin[1:], spbalanced + spnoise_nadir[:1], '--', label='Model (sum)')
     axs[1].set_xlabel('wavenumber (cpkm)')
     axs[1].set_ylabel('PSD (cm$^2$ / cpkm)')
-    # axs[1].set_xlim(1e-3, 3e-1)
-    #axs[1].set_ylim(1e-3, 1e6)
     axs[1].set_title('Nadir')
     axs[1].legend(loc='lower left', frameon=False, fontsize=9)
-    
-    # Save figure
+
     if output_filename:
         plt.savefig(output_filename, bbox_inches='tight')
-        
-    
+
     return fig, axs
 
 def plot_swot_sim_maps_and_spectra(

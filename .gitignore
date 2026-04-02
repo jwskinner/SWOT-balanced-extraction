@@ -110,10 +110,14 @@ NA-Sim_balanced_outputs/
 balanced_outputs
 plots/
 old/
+balanced_extraction
 
 # ignore my job files 
 job_slurm
 job_slurm_batch 
+job_*
+job_download_data
+
 
 # ignore the slurm files 
 *.out 
@@ -151,3 +155,6 @@ aviso.txt
 
 # Add the BE fig 
 !balanced_extraction_paper/balanced_extraction.png
+
+# My notes
+notes.text

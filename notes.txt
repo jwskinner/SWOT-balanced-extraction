@@ -1,0 +1,22 @@
+# Balanced Extraction regions with good temporal coverage Vd (2023-08-05 → 2026-03-01) -- ~180 granules: 
+
+# KE region 1: [30.0, 38.0, 154.0, 162.0] 737.5 km (x) x 889.6 km (y) passes through K.E
+PASSES=(2 17 30 45 58 295 308 323 336 351 364)
+
+# KE region 2: [22.0, 30.0, 154.0, 162.0]  799.5 km (x) x 889.6 km (y) passes under KE
+PASSES=(17 30 45 58 86 267 295 323 336 364 573)
+
+# SO Region 1: [-58.0, -50.0, 140.0, 152.0] 784.3 km (x) x 889.6 km (y) passes under tasmania
+PASSES=(60 88 116 144 183 211 239 267 366 394 450 489 517 573)
+
+# SO Region 2: [-58.0, -50.0, -152.0, -140.0] 784.3 km (x) x 889.6 km (y) west of New Zeland
+PASSES=(11 39 67 95 166 194 222 289 317 345 373 472 500 528)
+
+# SO Region 3: [-58.0, -50.0, -116.0, -103.0] 849.7 km (x) x 889.6 km (y) further west than SO2
+PASSES=(80 108 136 175 203 231 259 330 358 386 414 453 481 509 537 565)
+
+# NA Region 2: [27.0, 35.0, -75.0, -67.0]  762.5 km (x) x 889.6 km (y)
+PASSES=(7 20 48 257 298 313 326 563 576)
+
+# Original NA Region
+PASSES=(48 35 7 354 326 313) 

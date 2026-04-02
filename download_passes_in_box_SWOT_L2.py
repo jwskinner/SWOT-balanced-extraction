@@ -12,7 +12,7 @@ import jws_swot_tools as swot
 
 # --------------------------------------------------
 # CONFIG
-lat_min, lat_max, lon_min, lon_max = [-58.0, -50.0, -152.0, -140.0]
+lat_min, lat_max, lon_min, lon_max = [52.5, 62.5, -37.0, -17.0] 
 
 tmin = "2023-07-10 00:00:00"
 tmax = "2026-03-20 23:59:59"
@@ -21,6 +21,8 @@ short_nadir_name = "SWOT_L2_NALT_GDR_D"
 
 download_dir = "/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/"
 download     = True       # download the passes or just plot them
+basic        = True      # download the basic files
+expert       = True       # download the expert files
 min_points   = 25000      # minimum data points inside box needed to count as a valid pass
 min_granules = 100        # minimum number of granules a pass must have to be included
 
@@ -58,14 +60,16 @@ def pass_covers_box(filepath, lat_min, lat_max, lon_min, lon_max, min_points=100
     a box when their lat-lon data is either missing or does not intersect the box at all. 
     """
     with nc.Dataset(filepath) as ds:
-            lat = ds.variables["latitude"][:].ravel()
-            lon = ds.variables["longitude"][:].ravel()
-            lon = (lon + 180) % 360 - 180
-            inside = (
-                (lat >= lat_min) & (lat <= lat_max) &
-                (lon >= lon_min) & (lon <= lon_max)
-            )
-            n_inside = int(np.sum(inside))
+        lat = ds.variables["latitude"][:].ravel()
+        lon = ds.variables["longitude"][:].ravel()
+        lon = lon % 360  
+        lon_min_360 = lon_min % 360
+        lon_max_360 = lon_max % 360
+        inside = (
+            (lat >= lat_min) & (lat <= lat_max) &
+            (lon >= lon_min_360) & (lon <= lon_max_360)
+        )
+        n_inside = int(np.sum(inside))
     return n_inside >= min_points, n_inside
 
 # Group granules by pass
@@ -125,6 +129,7 @@ for color, pass_num in zip(colors, pass_list):
 
     try:
         covers, n_pts = pass_covers_box(files[0], lat_min, lat_max, lon_min, lon_max, min_points)
+
         if not covers:
             print(f"  Pass {pass_num:03d}: only {n_pts} pts in box — skipping")
             continue
@@ -160,7 +165,8 @@ plt.tight_layout()
 plt.savefig("pass_preview.png", dpi=150)
 plt.close()
 
-print(f"\nValid passes after screening: {valid_passes}")
+print("\nValid passes after screening:")
+print(f"PASSES=({' '.join(str(p) for p in valid_passes)})")
 print("Saved pass_preview.png")
 
 # --------------------------------------------------
@@ -178,22 +184,39 @@ if download:
 
         # Search KaRIn and nadir independently so nadir availability
         # does not truncate the KaRIn download via shared_cycles filtering as in the return_cloud_files function. 
-        karin_pass = earthaccess.search_data(
-            short_name=short_karin_name,
-            temporal=(tmin, tmax),
-            granule_name=f"*_LR_SSH_Basic_*_{pass_num:03d}_*",
-        )
+        
+        if basic: # switch for the basic files 
+            karin_basic = earthaccess.search_data(
+                short_name=short_karin_name,
+                temporal=(tmin, tmax),
+                granule_name=f"*_LR_SSH_Basic_*_{pass_num:03d}_*",
+            )
+        
+        if expert: # download the expert as well if we want them
+            karin_expert = earthaccess.search_data(
+                short_name=short_karin_name,
+                temporal=(tmin, tmax),
+                granule_name=f"*_LR_SSH_Expert_*_{pass_num:03d}_*",
+            )
         nadir_pass = earthaccess.search_data(
             short_name=short_nadir_name,
             temporal=(tmin, tmax),
             granule_name=f"*_{pass_num:03d}_*",
         )
 
-        print(f"  KaRIn: {len(karin_pass)} granules | Nadir: {len(nadir_pass)} granules")
-        download_batch(karin_pass, download_dir)
+        basic_count  = len(karin_basic)  if basic  else 0
+        expert_count = len(karin_expert) if expert else 0
+        print(f"  KaRIn Basic: {basic_count} | Expert: {expert_count} | Nadir: {len(nadir_pass)} granules")
+        
+        # download karin (different versions)
+        if basic: 
+            download_batch(karin_basic, download_dir)
+        if expert:
+            download_batch(karin_expert, download_dir)
+        
+        # download nadir 
         download_batch(nadir_pass, download_dir)
         print(f"Completed: {pass_num}")
 
 print("Download Complete")
-print("\nValid Passes:")
 print(f"PASSES=({' '.join(str(p) for p in valid_passes)})")
