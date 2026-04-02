@@ -119,21 +119,6 @@ def get_best_sample_index(karin_files, lat_min, lat_max, swath_width=25):
 
     return best_index
 
-def init_swot_arrays(num_shared_cycles, track_length, total_width, track_length_nadir):
-    """
-    Initializes arrays for SWOT KaRIn and Nadir data.
-    """
-    lat_karin  = np.full((num_shared_cycles, track_length, total_width), np.nan)
-    lon_karin  = np.full_like(lat_karin, np.nan)
-    ssha_karin = np.full_like(lat_karin, np.nan)
-    time_array = np.full((num_shared_cycles, track_length), np.nan)
-    ssha_nadir = np.full((num_shared_cycles, track_length_nadir), np.nan)
-    lat_nadir  = np.full_like(ssha_nadir, np.nan)
-    lon_nadir  = np.full_like(ssha_nadir, np.nan)
-    tide       = np.full((num_shared_cycles, track_length, total_width), np.nan)
-
-    return lat_karin, lon_karin, ssha_karin, time_array, ssha_nadir, lat_nadir, lon_nadir, tide
-
 # Returns the indices of the track in the KaRIn file that fall within the specified latitude range.
 def get_karin_track_indices(karin_file, lat_min, lat_max):
     

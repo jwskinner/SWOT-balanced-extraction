@@ -24,9 +24,6 @@ def balanced_model_tapered(k, A_b, lam, s_param, cutoff=2.0):
     sp = A_b / (1.0 + (lam * k)**s_param) # base balanced spectrum
     return sp * taper(k, cutoff)
 
-def matern_spec(k, gm, lam_u):# for unbalanced part
-    sp = 2*np.pi*gamma(gm+1/2)*(2*gm)**gm / (gamma(gm)*lam_u**(2*gm)) * (2*gm/lam_u**2 + 4*np.pi**2*k**2)**-(gm+1/2)
-    return sp
 
 def unbalanced_model_notaper(k, A_n, lam_n, s_n):
     '''Model of unbalanced component without a Guassian taper at high wavenumbers'''
