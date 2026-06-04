@@ -443,8 +443,11 @@ def plot_balanced_extraction(
         rasterized=True
     )
     axes[0].set_title("SWOT Observed SSHA")
-    dt = karin.time_dt[index].astype('datetime64[s]').astype(datetime)
-    axes[0].set_title(dt.strftime("%d %B %Y"), loc="right")
+    try:
+        dt = karin.time_dt[index].astype('datetime64[s]').astype(datetime) # sometimes dateime values are bad
+        axes[0].set_title(dt.strftime("%d %B %Y"), loc="right")
+    except:
+        axes[0].set_title(f"Index {index}", loc="right")
     axes[0].set_ylabel("across-track (km)")
     axes[0].margins(x=0, y=0)
     axes[0].set_ylim(0, y_km.max())
@@ -505,6 +508,6 @@ def plot_balanced_extraction(
         ax.set_yticks(yticks)
 
     plt.savefig(outname, dpi=300, bbox_inches="tight")
-    plt.show()
+    plt.close('all')
 
     return  ug, vg, geo_vel, geo_vort

@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 import pickle
 import sys 
 import numpy as np
@@ -15,11 +13,10 @@ importlib.reload(swot)
 from scipy.ndimage import gaussian_filter
 sys.modules["JWS_SWOT_toolbox"] = swot
 
+KARIN_NA_PATH = f"./synthetic_swot_data/Pass_009_Lat28_35/karin_synth.pkl" # synthetic swot data paths
+NADIR_NA_PATH = f"./synthetic_swot_data/Pass_009_Lat28_35/nadir_synth.pkl"
+BALANCED_PATH = f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho0km/balanced_extraction_pass009.pkl"   # balanced extraction result path
 
-PICKLES = "../pickles"
-KARIN_NA_PATH = f"{PICKLES}/karin_NA_tmean.pkl"
-NADIR_NA_PATH = f"{PICKLES}/nadir_NA_tmean.pkl"
-BALANCED_PATH = f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_0km.pkl"  # same but with time mean removed
 INDEX = 40  # time index to plot
 
 # -------------------
@@ -32,21 +29,21 @@ with open(NADIR_NA_PATH, "rb") as f:
     nadir_NA = pickle.load(f)
 
 with open(BALANCED_PATH, "rb") as f:
-    ht_all = pickle.load(f)  # (time, ny, nx), meters
+    ht_all = pickle.load(f)  
 
 # Arrays
-ssh_noisy = np.asarray(karin_NA.ssh_noisy, dtype=float)  # (time, ny, nx)
-ssha_full = np.asarray(karin_NA.ssha_full, dtype=float)  # (time, ny, nx)
+ssh_noisy = np.asarray(karin_NA.ssh_noisy, dtype=float)  
+ssha_full = np.asarray(karin_NA.ssha_full, dtype=float)  
 
-# Grid spacings (meters)
-dx_m = float(karin_NA.dx_km) * 1e3  # along-track
-dy_m = float(karin_NA.dy_km) * 1e3  # across-track
+# Grid spacings [meters]
+dx_m = float(karin_NA.dx_km) * 1e3 
+dy_m = float(karin_NA.dy_km) * 1e3  
 
-# Shapes
+# Array shapes (should all be same)
 _, ny, nx = ssh_noisy.shape
-nyt, nxt = ny, nx  # aliases for your later code
+nyt, nxt = ny, nx 
 
-# -------------------
+# function for filling the gap with NaNs
 def fill_nans_rowwise(field2d):
     """Fill NaNs rowwise (across-track direction) with linear interp / nearest."""
     f = np.array(field2d, dtype=float)
@@ -63,34 +60,32 @@ def fill_nans_rowwise(field2d):
             f[i, ~good] = np.interp(x[~good], x[good], row[good])
     return f
 
-# Build 1-D latitude array of length ny for the INDEX time slice
-# (compute_geostrophic_* expect lat of shape (ny,))
-if hasattr(karin_NA, "lat"):
-    lat_2d = np.asarray(karin_NA.lat[INDEX], dtype=float)  # (ny, nx) or (ny,) depending on source
-    if lat_2d.ndim == 2:
-        lats_1d = np.nanmean(lat_2d, axis=1)
-    else:
-        lats_1d = lat_2d
-else:
-    # fallback: linear span if lat not present
-    lats_1d = np.linspace(20.0, 50.0, ny)
+# build the lat 1D and 2D arrays
+lat_2d = np.asarray(karin_NA.lat[INDEX], dtype=float)  
+lats_1d = np.nanmean(lat_2d, axis=1)
 
-# -------------------
-# Prepare fields
-# -------------------
-obs_map = ssh_noisy[INDEX]                 # (ny, nx)
-bal_map = np.asarray(ht_all[INDEX])        # (ny, nx)
-truth_full = ssha_full[INDEX]              # (ny, nx)
 
-# Match your crop on the across-track (columns) dimension: [:, 4:64]
-truth_map = truth_full[:, 5:64] 
+# Fields 
+obs_map = ssh_noisy[INDEX]                 
+bal_map = np.asarray(ht_all.ssh_balanced[INDEX]).T  
+truth_full = ssha_full[INDEX]          
+truth_map = truth_full #truth_full[:, 5:65] 
+
+# find the subset that minimizes the difference between
+# truth map and balanced map because truth map is the full 
+# observation slice and balanced is a slight crop in from the
+# edges of the swath
+w = bal_map.shape[1]
+best_i = min(range(truth_map.shape[1] - w + 1), key=lambda i: np.nanmean((truth_map[:, i:i+w] - bal_map)**2))
+print(f"Optimal truth_map slice: [{best_i}:{best_i+w}]")
+truth_map = truth_map[:, best_i:best_i+w]
+
 ssha_diff = truth_map - bal_map
 
-# -------------------
-# Axes extents (km) — using .T so columns -> x (across-track, dy), rows -> y (along-track, dx)
+# Extents (for plotting)
 dy_km = karin_NA.dy_km  
 dx_km = karin_NA.dx_km
-shift_x = 1.0 * dx_km # we are on half pixels
+shift_x = 1.0 * dx_km 
 
 # Apply shift to the Across-track dimension (indices 0 and 1)
 extent = [0, (ny * dy_km), 0, nx * dx_km + shift_x]
@@ -113,8 +108,8 @@ im0 = axs[0].imshow(obs_map.T, origin="upper", cmap=cmap, aspect="equal",
 
 ynn = nadir_NA.y_grid.ravel()*1e-3
 axs[0].scatter(
-    ynn,                       # Along-track (x direction)
-    np.full_like(ynn, 59.5),   # Across-track: all at midline of swath on the half grid
+    ynn,                       
+    np.full_like(ynn, 59.5),   
     c=nadir_NA.ssh_noisy[INDEX],
     s=2, cmap=cmap,
     edgecolor="none",
@@ -173,7 +168,6 @@ plt.close(fig)
 # -------------------
 # Paper Fig 9. Geostrophic speed |u_g|
 # -------------------
-# NaN-tolerant obs for derivatives
 nan_mask = np.isnan(obs_map)
 obs_filled = fill_nans_rowwise(obs_map)
 
@@ -186,7 +180,6 @@ g_obs[nan_mask] = np.nan
 
 ug_recon, vg_recon, g_recon = swot.compute_geostrophic_velocity(bal_map, dx_m, dy_m, lats_1d, order = 2)
 ug_truth, vg_truth, g_truth = swot.compute_geostrophic_velocity(h_truth_map, dx_m, dy_m, lats_1d, order = 2)
-
 
 # Difference magnitude
 g_diff_mag = np.sqrt((ug_truth - ug_recon) ** 2 + (vg_truth - vg_recon) ** 2)
@@ -204,7 +197,7 @@ cbar = fig.colorbar(im0, ax=axs[0], **cb_kwargs)
 cbar.ax.tick_params(labelsize=fsize)
 cbar.set_label(r"$|{\bf u}_g|$ [m s$^{-1}$]", size=fsize)
 
-# Panel 2: Recovered speed (cropped extent for consistency with truth)
+# Panel 2: Recovered speed
 im1 = axs[1].imshow(g_recon.T, origin="upper", cmap=cmap_speed, aspect="equal",
                     extent=extent,
                     vmin=0, vmax=2.0)
@@ -213,7 +206,7 @@ cbar = fig.colorbar(im1, ax=axs[1], **cb_kwargs)
 cbar.ax.tick_params(labelsize=fsize)
 cbar.set_label(r"$|{\bf u}_g|$ [m s$^{-1}$]", size=fsize)
 
-# Panel 3: Truth speed (cropped)
+# Panel 3: Truth speed
 im2 = axs[2].imshow(g_truth.T, origin="upper", cmap=cmap_speed, aspect="equal",
                     extent=extent,
                     vmin=0, vmax=2.0)
@@ -254,7 +247,7 @@ plt.close(fig)
 # Paper Fig. 10 Geostrophic vorticity ζ/f
 # -------------------
 # Compute vorticities (use meters for dx/dy; expects lats length ny)
-fsize = 8 # bit larger because more panels
+fsize = 8 # a bit larger because more panels
 vort_obs = swot.compute_geostrophic_vorticity(obs_filled, dx_m, dy_m, lats_1d, order = 2)
 vort_obs[nan_mask] = np.nan
 

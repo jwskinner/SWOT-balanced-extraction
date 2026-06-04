@@ -30,11 +30,15 @@ def sin2_window_func(n):
     return np.sqrt(8/3) * np.sin(np.pi * np.arange(n) / n) ** 2
 
 def mean_power_spectrum(data, window, dim, average_dims):
-    '''Computes the power spectrum using xarray'''
     
-    #pspec = xrft.power_spectrum(data, dim=dim, window='tukey', window_correction=True, scaling='density') # we can test other windows
+    """Computes the power spectrum using xarray"""
+    
     pspec = xrft.power_spectrum(data * window, dim=dim, detrend=None)
-    return 2 * pspec.mean(dim=average_dims, skipna=True) # (factor of two is because we use one sided spectrum)
+    pspec_one_sided = 2 * pspec  # one-sided spectrum
+    
+    mean = pspec_one_sided.mean(dim=average_dims, skipna=True)
+    
+    return mean
 
 def onesided_spectrum(data,  window, dx = 2e3):
     '''Computes the one-sided power spectrum using RFFT'''

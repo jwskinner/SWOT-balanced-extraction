@@ -111,6 +111,7 @@ balanced_outputs
 plots/
 old/
 balanced_extraction
+balanced_extraction_paper/balanced_extraction
 
 # ignore my job files 
 job_slurm

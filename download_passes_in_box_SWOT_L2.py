@@ -13,6 +13,7 @@ import jws_swot_tools as swot
 # --------------------------------------------------
 # CONFIG
 lat_min, lat_max, lon_min, lon_max = [52.5, 62.5, -37.0, -17.0] 
+lat_min, lat_max, lon_min, lon_max = [47.0, 65.0, -72.0, -50.0] 
 
 tmin = "2023-07-10 00:00:00"
 tmax = "2026-03-20 23:59:59"

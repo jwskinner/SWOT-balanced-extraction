@@ -110,7 +110,7 @@ class KarinData:
         
         if hasattr(self, 'ssh_mean') and self.ssh_mean is not None:
             karin_mean = xr.DataArray(self.ssh_mean*100, coords=k_coords, dims=['line', 'pixel'])
-            self.spec_tmean = swot.mean_power_spectrum(karin_mean, self.window, 'line', ['pixel'])
+            self.spec_tmean  = swot.mean_power_spectrum(karin_mean, self.window, 'line', ['pixel'])
         
         if hasattr(self, 'ssh_mean_highpass') and self.ssh_mean_highpass is not None:
             karin_mean_filtered = xr.DataArray(self.ssh_mean_highpass*100, coords=k_coords, dims=['line', 'pixel'])
@@ -118,7 +118,7 @@ class KarinData:
         
         if hasattr(self, 'tide') and self.tide is not None:
             karin_tide = xr.DataArray(self.tide*100, coords=kt_coords, dims=['sample', 'line', 'pixel'])
-            self.spec_tide = swot.mean_power_spectrum(karin_tide, self.window, 'line', ['sample', 'pixel'])
+            self.spec_tide  = swot.mean_power_spectrum(karin_tide, self.window, 'line', ['sample', 'pixel'])
         
         # 3. compute and remove spatial mean for anomaly 
         karin_spatial_mean = swot.spatial_mean(karin_ssha, ['line', 'pixel'])
@@ -259,14 +259,14 @@ class NadirData:
         nadir_spatial_mean = swot.spatial_mean(nadir_ssh, ['nadir_line'])
         nadir_anomsp = nadir_ssh - nadir_spatial_mean
         nadir_anomspa = nadir_ssha - nadir_spatial_mean
-
+    
         # 4. Time and Across-Track Av. SSH and SSHA spectra
         self.spec_ssh = swot.mean_power_spectrum(nadir_ssh, self.window, dim_name, avg_dims)
-        self.spec_ssha = swot.mean_power_spectrum(nadir_ssha, self.window, dim_name, avg_dims)
+        self.spec_ssha = swot.mean_power_spectrum(nadir_ssha,   self.window, dim_name, avg_dims)
         self.spec_alongtrack_av = swot.mean_power_spectrum(nadir_anomsp, self.window, dim_name, avg_dims)
-        self.spec_alongtrack_ava = swot.mean_power_spectrum(nadir_anomspa, self.window, dim_name, avg_dims)
-        self.spec_alongtrack_ins = swot.mean_power_spectrum(nadir_anomsp, self.window, dim_name, [])
-        
+        self.spec_alongtrack_ava = swot.mean_power_spectrum(nadir_anomspa,self.window, dim_name, avg_dims)
+        self.spec_alongtrack_ins = swot.mean_power_spectrum(nadir_anomsp, self.window, dim_name, [])  # no avg, no std
+    
         # 5. Store wavenumbers in various useful forms 
         waves = swot.get_wavenumbers(self.spec_alongtrack_ins, dim_name)
         self.wavenumbers_ord = waves['ord']

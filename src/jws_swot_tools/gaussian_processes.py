@@ -323,16 +323,20 @@ def balanced_covariance_func(
     params,
     cutoff=2.0,
     max_radius=5_000,
-    num_points=100_000, # gives 5m resolution
+    num_points=500_000, # gives 1m resolution
     smooth=False,
     scale_km=None,
+    taper = True, # not a parameter in the fit, prevents aliasing on the 2km grid
 ):
 
     # Unpack parameters
     A_b, lam_b, s_param = params[0], params[1], params[2]
 
     # Base spectral shape S0(k)
-    S0 = lambda k: (A_b / (1.0 + (lam_b * k) ** s_param)) * (swot.taper(k, cutoff) ** 2)
+    if taper: 
+        S0 = lambda k: (A_b / (1.0 + (lam_b * k) ** s_param)) * (swot.taper(k, cutoff) ** 2)
+    else: 
+        S0 = lambda k: (A_b / (1.0 + (lam_b * k) ** s_param))
 
     # Apply optional smoothing in spectral space
     if smooth and (scale_km is not None) and (scale_km > 0):
@@ -347,7 +351,7 @@ def balanced_covariance_func(
     cov_func = swot.cov(S, max_radius, num_points)
     return cov_func
 
-def noise_covariance_func(params, lam_n=100, cutoff=2.0, max_radius=5_000, num_points=100_000):
+def noise_covariance_func(params, lam_n=100, cutoff=2.0, max_radius=5_000, num_points=500_000, taper=True):
     """
     Creates a spatial covariance function for the unbalanced (KaRIN noise) component
     from a parameter vector.
@@ -356,7 +360,10 @@ def noise_covariance_func(params, lam_n=100, cutoff=2.0, max_radius=5_000, num_p
     A_n, s_n = params[3], params[5]
     
     # Define the spectral shape Sk(k) with a Gaussian taper
-    Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * swot.taper(k, cutoff)
+    if taper: 
+        Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2) * swot.taper(k, cutoff)
+    else: 
+        Sk = lambda k: A_n / (1 + (lam_n * k)**2)**(s_n / 2)
     
     # Use swot.cov to get the spatial covariance function
     cov_func = swot.cov(Sk, max_radius, num_points)
@@ -459,7 +466,6 @@ def estimate_signal_on_target_fast(R, C, N, h):
     print(f"Signal estimation time: {time.time() - start_time:.4f} seconds")
     return ht
 
-# ---- Updated covariances with different tapers for each component (eqs 6,7 in paper) ----
 def balanced_psd_from_params(params):
     A_b, lam_b, s_b = params[0], params[1], params[2]
     return lambda k: A_b / (1.0 + (lam_b * k)**s_b)

@@ -1,3 +1,4 @@
+# This script generates the posterior draws for the balanced extraction PDFS
 import numpy as np
 import os, pickle
 from scipy.sparse.linalg import eigsh
@@ -8,19 +9,21 @@ import h5py
 
 timer = swot.Timer()
 
-PICKLES = "./pickles"
-KARIN_NA_PATH = f"{PICKLES}/karin_NA_tmean.pkl"  # where SWOT data is held
-RESULTS_PATH = f"{PICKLES}/posterior_vorticity_results.pkl"
+KARIN_NA_PATH = f"./synthetic_swot_data/Pass_009_Lat28_35/karin_synth.pkl" # synthetic swot data paths
+RESULTS_PATH = f"./balanced_extraction/posterior_vorticity_results.pkl"    # directory to save our posterior draws
 
 def load(p):
     with open(p, "rb") as f:
         return pickle.load(f)
 
 def path_nonoise(km):  # "ground truth"
-    return f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_{km}km_nonoise.pkl"
+    return f"./balanced_extraction/SYNTH_data_noiseless/Pass_009_Lat28_35_rho{km}km/balanced_extraction_noiseless_pass009.pkl"
 
 def path_withnoise(km):  # extracted balanced field
-    return f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_{km}km.pkl"
+    return f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho{km}km/balanced_extraction_pass009.pkl"
+
+def posterior_path(km): 
+    return f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho{km}km/posterior.pkl"
 
 def finite_flat(*arrays):
     outs = []
@@ -31,7 +34,7 @@ def finite_flat(*arrays):
 
 # Loop over times and samples for the posterior and for each scale 
 # and save all the vorticies and ssh from extraction and posterior samples
-SCALES = [0, 1, 2, 4, 8, 16]
+SCALES = [1, 2, 4, 8, 16]
 NSAMPLES = 20 # number of posterior samples per time
 
 karin = load(KARIN_NA_PATH)
@@ -47,16 +50,15 @@ results = {}
 
 for km in SCALES:
     print(f"{km} km")
-    ht_sim = np.asarray(load(path_nonoise(km)), dtype=float)
-    ht_ext = np.asarray(load(path_withnoise(km)), dtype=float)
+    ht_sim = np.asarray(load(path_nonoise(km)).ssh_balanced, dtype=float)
+    ht_ext = np.asarray(load(path_withnoise(km)).ssh_balanced, dtype=float)
     T, ny, nx = ht_ext.shape
     sim_vort_all = np.zeros((T, ny, nx))
     ext_vort_all = np.zeros((T, ny, nx))
     post_vort_all = np.zeros((T, NSAMPLES, ny, nx))
     post_ssh_all  = np.zeros((T, NSAMPLES, ny, nx)) 
 
-    L_PATH = f"{PICKLES}/posterior_balanced_extraction_synth_NA_tmean_sm_{km}km.pkl"
-    C = load(L_PATH)
+    C = load(posterior_path(km)) # load the posterior at the scale to sample over
     Lfac, lower = la.cho_factor(C + np.eye(C.shape[0]) * 1.0e-10, lower=True) 
     Ltri = np.tril(Lfac)
     timer.lap("Cholesky factorisation")
@@ -71,11 +73,11 @@ for km in SCALES:
             # posterior sample: x ~ N(mu, C) with C ≈ L L^T
             ht_post = (mu + Ltri @ z).reshape(ny, nx) / 100.0  # meters
             post_ssh_all[t, s] = ht_post
-            post_vort = swot.compute_geostrophic_vorticity(ht_post, dx_m, dy_m, lat_1d)
-            post_vort_all[t, s] = post_vort
+            post_vort = swot.compute_geostrophic_vorticity(ht_post.T, dx_m, dy_m, lat_1d)
+            post_vort_all[t, s] = post_vort.T
 
-        sim_vort = swot.compute_geostrophic_vorticity(ht_sim[t], dx_m, dy_m, lat_1d)
-        ext_vort = swot.compute_geostrophic_vorticity(ht_ext[t], dx_m, dy_m, lat_1d)
+        sim_vort = swot.compute_geostrophic_vorticity(ht_sim[t].T, dx_m, dy_m, lat_1d)
+        ext_vort = swot.compute_geostrophic_vorticity(ht_ext[t].T, dx_m, dy_m, lat_1d)
         sim_vort_all[t] = sim_vort
         ext_vort_all[t] = ext_vort
 

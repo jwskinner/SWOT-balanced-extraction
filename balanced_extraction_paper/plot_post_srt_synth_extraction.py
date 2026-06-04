@@ -14,16 +14,15 @@ from scipy.linalg import cholesky
 # -------------------
 # Config / paths
 # -------------------
-PICKLES = "./pickles"
-KARIN_NA_PATH   = f"{PICKLES}/karin_NA_tmean.pkl"                                         # synthetic truth & grids
-HT_ALL_PATH     = f"{PICKLES}/balanced_extraction_synth_NA_tmean_sm_0km.pkl"              # saved recon (m) 
-POST_PATH       = f"{PICKLES}/posterior_balanced_extraction_synth_NA_tmean_sm_0km.pkl"    # saved P (SSH, cm^2)
+KARIN_NA_PATH   = f"./synthetic_swot_data/Pass_009_Lat28_35/karin_synth.pkl"               
+HT_ALL_PATH     = f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho0km/balanced_extraction_pass009.pkl"             
+POST_PATH       = f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho0km/posterior.pkl"   
 FIG_OUT         = "cross_track_std.pdf"
 
 # -------------------
 # Load saved products
 # -------------------
-print(">>> Loading saved files...")
+print("Loading saved files...")
 with open(KARIN_NA_PATH, "rb") as f:
     karin_NA = pickle.load(f)
 
@@ -34,10 +33,10 @@ with open(POST_PATH, "rb") as f:
     P = pickle.load(f)         # (ny*nx, ny*nx), cm^2      
 
 # -------------------
-# Pull truth and grid
+# Pull truth and grid in [m]
 # -------------------
 h_truth_all_m = getattr(karin_NA, "ssha_full")   # (ntime, ny, nx), meters  
-h_truth_all_m = h_truth_all_m[:, :, 5:64] # crop our truth field to match the SWOT area we start from index 5 and go + 50 + 9 in the gap
+h_truth_all_m = h_truth_all_m[:, :, 5:64]        # crop our truth field to match the SWOT area we start from index 5 and go + 50 + 9 in the gap
 
 xg_m   = getattr(karin_NA, "x_grid")             # (ny, nx), meters
 yg_m   = getattr(karin_NA, "y_grid")             # (ny, nx), meters
@@ -46,18 +45,18 @@ dy_km  = float(getattr(karin_NA, "dy_km"))
 lat_2d = getattr(karin_NA, "lat")                # (ny, nx)
 
 # -------------------
-# convert SSH fields to cm
+# convert SSH fields to [cm]
 # -------------------
-ht_all_cm      = ht_all_m * 100.0
+ht_all_cm = np.asarray(ht_all_m.ssh_balanced).transpose(0, 2, 1) * 100
 h_truth_all_cm = h_truth_all_m * 100.0
 
 ntime, ny, nx = h_truth_all_cm.shape
-xt_km = (xg_m * 1e-3).reshape(ny, nx)[:,:nx]   
-yt_km = (yg_m * 1e-3).reshape(ny, nx)[:,:nx]
+xt_km = (xg_m * 1e-3).reshape(ny, nx)[:,:nx] # in [km]  
+yt_km = (yg_m * 1e-3).reshape(ny, nx)[:,:nx] # in [km]
 xt_vec = xt_km.ravel()
 yt_vec = yt_km.ravel()
 
-print(f">>> Shapes: time={ntime}, ny={ny}, nx={nx}, P={P.shape} (cm^2)")
+print(f"Shapes: time={ntime}, ny={ny}, nx={nx}, P={P.shape} (cm^2)")
 
 # -------------------
 # Posterior SSH std from P
@@ -155,14 +154,14 @@ f      = 2.0 * omega * np.sin(np.deg2rad(latdeg))
 if abs(f) < 1e-12:
     f = 1e-12 * (1.0 if f >= 0 else -1.0)
 
-# Geometry scalings (km → m)
-scale_grad = 1e-3   # 1/km -> 1/m
-scale_lap  = 1e-6   # 1/km^2 -> 1/m^2
+# Unit scalings (km to m)
+scale_grad = 1e-3   # 1/km to  1/m
+scale_lap  = 1e-6   # 1/km^2 to  1/m^2
+cm_to_m = 1e-2      # cm to m
 
 # -------------------
-# Operators # i've  flipped U and V so U is along track in x-coordinate 
+# Operators note:  flipped U and V so U is along track in x-coordinate 
 # -------------------
-cm_to_m = 1e-2 
 Vop_cm = (-(g/f) * scale_grad) * Gy * cm_to_m    # [m/s] per [cm]
 Uop_cm = ( (g/f) * scale_grad) * Gx * cm_to_m    # [m/s] per [cm]
 Zop_cm = ( (g/(f**2)) * scale_lap) * Lap * cm_to_m  # [—] per [cm]
@@ -193,14 +192,14 @@ post_std_zeta = np.mean(np.sqrt(post_var_z), axis=0)          # [—]
 # Empirical std over time
 # -------------------
 def apply_ops_cm(h2d_cm):
-    """Apply operators that expect SSH in cm → (u,v,zeta/f)."""
+    """Apply operators that expect SSH in cm to (u,v,zeta/f)."""
     h_vec = np.asarray(h2d_cm).ravel()
     u = Uop_cm.dot(h_vec).reshape(ny, nx)  # [m/s]
     v = Vop_cm.dot(h_vec).reshape(ny, nx)  # [m/s]
     z = Zop_cm.dot(h_vec).reshape(ny, nx)  # [—]
     return u, v, z
 
-print(">>> Computing empirical std over time for SSH [cm], u,v [cm/s], zeta/f [—]")
+print("Computing empirical std over time for SSH [cm], u,v [cm/s], zeta/f [—]")
 diff_h_stack_cm = h_truth_all_cm - ht_all_cm             # [cm]
 diff_u_stack    = np.empty_like(ht_all_cm, dtype=float)  # [m/s]
 diff_v_stack    = np.empty_like(ht_all_cm, dtype=float)  # [m/s]
@@ -221,12 +220,6 @@ emp_std_zeta = np.sqrt(np.nanmean(diff_zeta_stack**2, axis=(0,1)))
 
 print(emp_std_h_cm.shape, emp_std_u_cs.shape, emp_std_v_cs.shape, emp_std_zeta.shape)
 
-# old way
-#emp_std_u_cs = np.nanmean(np.nanstd(diff_u_stack,     axis=0), axis=0) * 100  # [cm/s]
-#emp_std_zeta = np.nanmean(np.nanstd(diff_zeta_stack,  axis=0), axis=0)        # [—]
-#emp_std_v_cs = np.nanmean(np.nanstd(diff_v_stack,     axis=0), axis=0) * 100  # [cm/s]
-#emp_std_h_cm = np.nanmean(np.nanstd(diff_h_stack_cm, axis=0), axis=0)         # [cm]
-
 x_km = xt_km[0, :]
 
 # -------------------
@@ -241,7 +234,7 @@ axs[0].plot(x_km, post_std_h_cm_1d,lw=1.8, ls='-', color='tab:blue', label='Post
 axs[0].plot(x_km, emp_std_h_cm, 'k', lw=1.8, label=r'$\Delta h$ std.')
 axs[0].set_title('SSHA', fontsize=10)
 axs[0].set_ylabel('Std. [cm]')
-axs[0].set_ylim(0.65, 1.0)
+axs[0].set_ylim(0.6, 0.9)
 axs[0].legend(fontsize=9, loc='upper left')
 
 # 2) u_g [cm/s]
@@ -274,12 +267,11 @@ for lab, ax in zip(["(a)", "(b)", "(c)", "(d)"], axs):
     ax.text(0.001, 1.07, lab, transform=ax.transAxes, fontsize=fsize + 2,
             va="bottom", ha="left", bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.5))
 
-#fig.tight_layout()
 fig.savefig(FIG_OUT, bbox_inches='tight')
 print(f">>> Saved: {FIG_OUT}")
 
 # -------------------
-# Print summary stats
+# Print summary
 # -------------------
 def summarize(name, arr, units=""):
     a = np.asarray(arr)

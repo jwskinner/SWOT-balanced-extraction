@@ -16,7 +16,7 @@ import cartopy.feature as cfeature
  
 # ───── Read and Process Data ─────
 # Read in the SWOT data for this pass
-pass_num = 7
+pass_num = 9
 lat_max = 35
 lat_min = 28
 
@@ -24,16 +24,17 @@ if len(sys.argv) > 1:
     pass_num = int(sys.argv[1])
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
 folder = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" # folder to save data
 os.makedirs(folder, exist_ok=True)
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(data_folder, pass_num)
 
-sample_index = 1 
+sample_index = swot.get_best_sample_index(karin_files, lat_min, lat_max) 
 indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], lat_min, lat_max)
 indxs, track_length_nadir = swot.get_nadir_track_indices(nadir_files[sample_index][0], lat_min, lat_max)
 dims_SWOT = [len(shared_cycles), track_length, track_length_nadir]
 karin, nadir = swot.init_swot_arrays(dims_SWOT, lat_min, lat_max, pass_num)
+karin.sample_index = sample_index
 
 swot.load_karin_data(karin_files, lat_min, lat_max, karin, verbose=False)
 swot.process_karin_data(karin)
@@ -95,6 +96,7 @@ nadir_NA.ssha  = NA_nadir_ssh - NA_karin_smean[:, None]  # subtract the karin me
 karin_NA.ssha_full = NA_karin_full_ssh - NA_karin_smean[:, None, None] 
 
 # Builds the coordinate grids -- in [m]
+karin_NA.sample_index = sample_index # save the sample index for later reference
 karin_NA.coordinates()
 nadir_NA.coordinates()
 
@@ -110,7 +112,7 @@ p_karin, _ = swot.fit_spectrum(karin, karin.spec_alongtrack_av, swot.karin_model
 # Nadir model fit
 p_nadir, _ = swot.fit_nadir_spectrum(nadir, nadir.spec_alongtrack_av, p_karin)
 
-swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, f"{folder}fits.pdf")
+swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, output_filename=f"{folder}fits.pdf")
 
 # --- Grid and Spacing ---
 nx, ny = 2 * karin.swath_width, karin.track_length

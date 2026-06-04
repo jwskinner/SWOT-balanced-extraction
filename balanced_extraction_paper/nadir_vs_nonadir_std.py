@@ -40,7 +40,7 @@ def plot_from_cached(out):
     axs[0].plot(x_km[1:-1], ssh_posterior_std_k[1:-1], '--', lw=1.8, label='KaRIn only')
     axs[0].set_title('SSHA', fontsize = 11)
     axs[0].set_ylabel('Std. [cm]')
-    axs[0].set_ylim(0.65, 0.85)
+    axs[0].set_ylim(0.60, 0.80)
     axs[0].legend(fontsize=9)
 
     # 2) Geostrophic u (cm s^-1)
@@ -63,7 +63,7 @@ def plot_from_cached(out):
     axs[3].set_title(r'Geostrophic vorticity $\zeta_g / f$', fontsize = 11)
     axs[3].set_ylabel(r'Std.')
     axs[3].set_xlabel('Across track [km]')
-    axs[3].set_ylim(0.45, 0.525)
+    axs[3].set_ylim(0.48, 0.55)
 
     plt.savefig("karin_vs_nadir_std.pdf", bbox_inches="tight")
     plt.close(fig)
@@ -113,7 +113,7 @@ if os.path.exists(CACHE):
 DATA_FOLDER = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
 PASS_NUMBER = 9
 LAT_MIN, LAT_MAX = 28, 35
-INDEX = 40  # time index to estimate on
+INDEX = 6  # time index to estimate on
 
 print(">>> Gathering file lists")
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(DATA_FOLDER, PASS_NUMBER)
@@ -129,6 +129,7 @@ dims = [len(shared_cycles), track_length, track_length_nadir]
 # -----------------------------
 print(">>> Initializing data classes")
 karin, nadir = swot.init_swot_arrays(dims, LAT_MIN, LAT_MAX, PASS_NUMBER)
+karin.sample_index = sample_index
 
 print(">>> Loading KaRIn")
 swot.load_karin_data(karin_files, LAT_MIN, LAT_MAX, karin, verbose=False)
@@ -161,7 +162,7 @@ print(f">>> Using cycle: {shared_cycles[INDEX]}")
 # -----------------------------
 # Observation points (km)
 # -----------------------------
-index = 2
+index = 6
 mask_k = np.isfinite(karin.ssha[index])
 mask_n = np.isfinite(nadir.ssh[index]).ravel()
     
@@ -217,8 +218,8 @@ C_BT     = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk)*Tfun(kk), kk), kk)      # C[B 
 C_NT2    = jl.cov(jl.abel(jl.iabel(Nk_psd(kk), kk)*Tfun(kk)**2, kk), kk)  # C[N T^2]
 
 # Tapered Kernels (requires Abel transform) in [cm]
-SIGMA    = 2 * np.pi * SIGMA_L_KM                              # σ convert to angular wavenumber
-DELTA    = (np.pi * karin.dx_km) / (2 * np.log(2))              # δ
+SIGMA    = 2 * np.pi * SIGMA_L_KM                               # σ convert to angular wavenumber
+DELTA    = 0.0 #(np.pi * karin.dx_km) / (2 * np.log(2))         # δ taper turned off 
 
 # Gaussian Smoothings and tapers combined
 G  = lambda k: np.exp(-((SIGMA**2) * (k**2)) / 2.0)            # Gassian smooth C[BG]
@@ -569,7 +570,7 @@ axs[2].set_ylabel(r'Std. [cm s$^{-1}$]')
 axs[3].plot(x_km[1:-1], lap_posterior_std[1:-1], '-',  lw=1.8, label='KaRIn + Nadir')
 axs[3].plot(x_km[1:-1], lap_posterior_std_k[1:-1], '--', lw=1.8, label='KaRIn only')
 axs[3].set_title(r'Geostrophic Vorticity $\zeta / f$')
-axs[3].set_ylabel(r'Std. [—]')
+axs[3].set_ylabel(r'Std.')
 axs[3].set_xlabel('Across Track [km]')
 
 plt.savefig("karin_vs_nadir_std.pdf", bbox_inches="tight")
@@ -601,5 +602,4 @@ axs2[3].set_xlabel('Across Track [km]')
 plt.savefig("nadir_only_std.pdf", bbox_inches="tight")
 plt.close(fig2)
 print(">>> Saved: nadir_only_std.pdf")
-
 

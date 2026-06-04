@@ -16,7 +16,7 @@ import jws_swot_tools as swot
 from netCDF4 import num2date
 
 #  ------- Functions for loading and processing SWOT data
-def return_karin_files(filepath, pnum, basic = True):
+def return_karin_files(filepath, pnum, datatype = "Basic"):
     """
     Loads the SWOT files from the specified folder and aligns 
     the KaRIn and Nadir files based on their cycles.
@@ -24,10 +24,7 @@ def return_karin_files(filepath, pnum, basic = True):
     all_files = glob(filepath)
     files_with_numbers = [] # now order by pass to get order in time
     for filename in all_files:
-        if basic: 
-            match = re.search(r'Basic_(\d+)_(\d+)', filename)
-        else: 
-            match = re.search(r'Expert_(\d+)_(\d+)', filename)
+        match = re.search(rf'{datatype}_(\d+)_(\d+)', filename)
         if match:
             cycle = int(match.group(1))
             pass_num = int(match.group(2))
@@ -49,15 +46,14 @@ def return_nadir_files(filepath_nadir, valid_cycles, pnum):
     nadir_files.sort(key=lambda x: x[1])  # sort by cycle
     return nadir_files
 
-def return_swot_files(folder, pnum, nadir_folder=None, basic=True):
+def return_swot_files(folder, pnum, nadir_folder=None, datatype="Basic"):
     
     # 1. Set the search pattern
     lvl = "L2"
-    typ = "Basic" if basic else "Expert"
-    filepath = os.path.join(folder, f'SWOT_{lvl}_LR_SSH_{typ}_*.nc')
+    filepath = os.path.join(folder, f'SWOT_{lvl}_LR_SSH_{datatype}_*.nc')
     
     # 2. Get the primary files (Karin)
-    karin_files_with_numbers = return_karin_files(filepath, pnum, basic)
+    karin_files_with_numbers = return_karin_files(filepath, pnum, datatype)
     karin_dict = {cycle: item for item, cycle, _ in karin_files_with_numbers}
 
     # 3. Look for separate GPR files for Nadir

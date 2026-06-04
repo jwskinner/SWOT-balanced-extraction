@@ -78,7 +78,8 @@ def return_cloud_files(pass_num,
                        tmin, 
                        tmax, 
                        karin_short_name = "SWOT_L2_LR_SSH_2.0", 
-                       nadir_short_name = "SWOT_L2_NALT_GDR_2.0"): 
+                       nadir_short_name = "SWOT_L2_NALT_GDR_2.0", 
+                       subgroup = "Basic"): 
     
     # Authenticate
     print("------- Authenticating User -------")
@@ -92,7 +93,7 @@ def return_cloud_files(pass_num,
     karin_results = earthaccess.search_data(
         short_name = karin_short_name,
         temporal = (tmin, tmax),
-        granule_name = f'*_SSH_Basic_*_{pass_num:03d}_*'
+        granule_name = f'*_SSH_{subgroup}_*_{pass_num:03d}_*'
     )
 
     # Search for all granules matching this pass

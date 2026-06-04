@@ -1,5 +1,5 @@
 # Balanced extraction on synthetic SWOT KaRIn (with optional Nadir)
-# Units:: work in [cm] for covariances/obs, spectra in [cpkm] return [meters] for outputs.
+# Units are in [cm] for covariances/obs, spectra in [cpkm] return [meters] for outputs.
 import os, sys
 import pickle
 import numpy as np
@@ -14,10 +14,10 @@ from jws_swot_tools.julia_bridge import julia_functions as jl
 import pandas as pd             
 from datetime import datetime
 
-# =========================
+# ------------------------------
 # CONFIG
-# =========================
-pass_num = 22                                                                   # SWOT pass number
+# ------------------------------
+pass_num = 9                                                                  
 lat_min = 28 
 lat_max = 35 
 
@@ -25,15 +25,15 @@ if len(sys.argv) > 1:
     pass_num = int(sys.argv[1])
 
 SYN_DIR = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" 
-KARIN_NA_PATH    = f"{SYN_DIR}/karin_synth.pkl"
-NADIR_NA_PATH    = f"{SYN_DIR}/nadir_synth.pkl"
-KARIN_PATH       = f"{SYN_DIR}/karin_swot.pkl"
-NADIR_PATH       = f"{SYN_DIR}/nadir_swot.pkl"
-RHO_L_KM         = 4.0                                                         # Gaussian spectral taper scale
-COMPUTE_POSTERIOR= False                                                       # toggle posterior on target grid
-TAPER_CUTOFF     = 2.0                                                         # "T(k)" cutoff
-OUTNAME          = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
-OUTDIR           = f"./balanced_extraction/SYNTH_data/{OUTNAME}/"
+KARIN_NA_PATH     = f"{SYN_DIR}/karin_synth.pkl"
+NADIR_NA_PATH     = f"{SYN_DIR}/nadir_synth.pkl"
+KARIN_PATH        = f"{SYN_DIR}/karin_swot.pkl"
+NADIR_PATH        = f"{SYN_DIR}/nadir_swot.pkl"
+RHO_L_KM          = 0.0                                                        # Gaussian spectral smoothing scale
+COMPUTE_POSTERIOR = True                                                        # toggle posterior on target grid
+TAPER_CUTOFF      = 0.0                                                         # "T(k)" cutoff
+OUTNAME           = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+OUTDIR            = f"./balanced_extraction/SYNTH_data/{OUTNAME}/"
 os.makedirs(os.path.dirname(OUTDIR), exist_ok=True)
 t = swot.Timer()
 
@@ -52,7 +52,7 @@ t.lap("Data loaded")
 ntime = karin_NA.ssha.shape[0]
 
 # -------------------------
-# Spectral fit (cm)
+# Spectral fit [cm]
 # -------------------------
 
 noisy_karin  = karin_NA.ssh_noisy * 100.0                                      # synthetic SWOT data in m to cm
@@ -63,6 +63,7 @@ ssh_noisy_xr = xr.DataArray(
     coords=[np.arange(ntime), karin_NA.y_coord_km, karin_NA.x_coord_km],
     dims=["sample", "line", "pixel"],
 )
+
 spec_ssh_noisy = swot.mean_power_spectrum(ssh_noisy_xr, karin_NA.window, "line", ["sample", "pixel"])
 
 nad_noisy_xr = xr.DataArray(
@@ -74,9 +75,9 @@ nad_noisy_xr = xr.DataArray(
 spec_nad_noisy = swot.mean_power_spectrum(nad_noisy_xr, nadir_NA.window, "nadir_line", ["sample"])
 
 # Fit spectra to get parameters
-p_karin, _   = swot.fit_spectrum(karin_NA, spec_ssh_noisy, swot.karin_model)
+p_karin, _   = swot.fit_spectrum(karin_NA, spec_ssh_noisy, swot.karin_model) # taper turned off by default now
 p_nadir, _   = swot.fit_nadir_spectrum(nadir_NA, spec_nad_noisy, p_karin)
-swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, f'{OUTDIR}fits_synth.pdf')
+#swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, output_filename=f'{OUTDIR}fits_synth.pdf') # rough check, it still plots the SWOT data points but fits are to sim data
 t.lap("Spectral fits done")
 
 # -------------------------
@@ -92,9 +93,11 @@ xnn = (nadir.x_grid.ravel()[mask_n]) * 1e-3
 ynn = (nadir.y_grid.ravel()[mask_n]) * 1e-3
 
 # Target grid (km)
-xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km", extend=True)
+xt, yt, nxt, nyt, _, _ = swot.make_target_grid(karin, unit="km")
 n_t = xt.size
 t.lap("Grids and masks done")
+print(f"Target grid: {nxt} x {nyt} = {n_t} points")
+print(f"Observation grid: {karin_NA.ssha[index].shape}")
 
 # -------------------------
 # Distance matrices in km
@@ -113,7 +116,7 @@ t.lap("Distance matrices built")
 sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # cm
 
 # -------------------------
-# Covariance functions with spectral taper G and T
+# Covariance functions with spectral taper G and T options
 # -------------------------
 B_psd = swot.balanced_psd_from_params(p_karin)                                 # B(k) balanced power spectrum model
 Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             # N_K(k) noise power spectrum model
@@ -121,16 +124,16 @@ Nk_psd = swot.karin_noise_psd_from_params(p_karin)                             #
 # Base kernels in [cm^2]
 n_samples = 100000
 l_sample = 5000
-kk = np.arange(n_samples // 2 + 1) / l_sample                                  # wavenumber grid for transforms
+kk = np.arange(n_samples // 2 + 1) / l_sample                                   # wavenumber grid for transforms
 
-Tfun  = lambda k: swot.taper(k, cutoff=TAPER_CUTOFF)                           # T(k) is taper function  
-C_B      = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk), kk), kk)                    # C[B]
-C_BT     = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk)*Tfun(kk), kk), kk)           # C[B T]
-C_NT2    = jl.cov(jl.abel(jl.iabel(Nk_psd(kk), kk)*Tfun(kk)**2, kk), kk)       # C[N T^2]
+#Tfun  = lambda k: swot.taper(k, cutoff=TAPER_CUTOFF)                           # T(k) is taper function  
+C_B      = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk), kk), kk)                     # C[B]
+C_BT     = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk), kk), kk)                     # C[B T]
+C_NT2    = jl.cov(jl.abel(jl.iabel(Nk_psd(kk), kk), kk), kk)                    # C[N T^2] taper turned off
 
 # Tapered Kernels (requires Abel transform) in [cm]
-SIGMA         = 2 * np.pi * RHO_L_KM                                         # σ convert to angular wavenumber
-DELTA         = (np.pi * karin.dx_km) / 2 * np.log(2)                          # δ
+SIGMA         = 2 * np.pi * RHO_L_KM                                           # σ convert to angular wavenumber
+DELTA         = 0.0 #(np.pi * karin.dx_km) / 2 * np.log(2)                     # δ for taper -- turned off above but here if needed.
 
 # Gaussian Smoothings and tapers combined
 G  = lambda k: np.exp(-((SIGMA**2) * (k**2)) / 2.0)                            # Gassian smooth C[BG]
@@ -174,8 +177,8 @@ t.lap("Covariance blocks built")
 # -------------------------
 # Cho factor
 # -------------------------
-eps = 1e-8 * float(np.mean(np.diag(C_obs)))
-cho = la.cho_factor(C_obs + 0.0 * eps*np.eye(C_obs.shape[0]), lower=True)      # Turned the jitter off
+#eps = 1e-8 * float(np.mean(np.diag(C_obs))) # for jitter if needed
+cho = la.cho_factor(C_obs, lower=True)       # Turned the jitter off
 t.lap("Cholesky done")
 
 # -------------------------
@@ -253,32 +256,37 @@ print(f"Data saved to: {nc_path}")
 # posterior on target (Eq. 10 in paper)
 # -------------------------
 if COMPUTE_POSTERIOR:
-    L, lower = la.cho_factor(C_obs, lower=True, check_finite=False, overwrite_a=False)
-    W = solve_triangular(L, R.T, lower=True, check_finite=False, overwrite_b=False)
-    C_mean = W.T @ W                                                           # covariance of posterior mean R @ C_obs^{-1} @ R.T
-    P = R_tt - C_mean                                                          # posterior 
-    
+    L_obs = la.cholesky(C_obs, lower=True)
+    W = solve_triangular(L_obs, R.T, lower=True, check_finite=False, overwrite_b=False)
+    C_mean = W.T @ W                 # covariance of posterior mean R @ C_obs^{-1} @ R.T
+    P = R_tt - C_mean                # posterior
+    print(f"Posterior Computed")
+
+    # sanity check
+    eigvals = np.linalg.eigvalsh(P)
+    print(f"P min eigenvalue: {eigvals.min():.4e}  (should be >= 0)")
+
     posterior_variance = np.diag(P)
     posterior_variance_field = posterior_variance.reshape(nyt, nxt)
-
-    # ----- Save outputs -----
+    
+    # Save outputs
     km = int(RHO_L_KM)
-
+    
     # Posterior covariance (full)
     with open(f"{OUTDIR}posterior.pkl", "wb") as f:
         pickle.dump(P, f, protocol=pickle.HIGHEST_PROTOCOL)
-    t.lap(f"Posterior saved: {OUTDIR}posterior.pkl", "wb")
-
+    t.lap(f"Posterior saved: {OUTDIR}posterior.pkl")
+    
     # Covariance of posterior mean
     with open(f"{OUTDIR}Cmean.pkl", "wb") as f:
         pickle.dump(C_mean, f, protocol=pickle.HIGHEST_PROTOCOL)
     t.lap(f"C_mean saved: {OUTDIR}Cmean.pkl")
-
+    
     # Posterior variance (vector)
     with open(f"{OUTDIR}posterior_varvec.pkl", "wb") as f:
         pickle.dump(posterior_variance, f, protocol=pickle.HIGHEST_PROTOCOL)
     t.lap(f"Posterior variance (vector) saved: {OUTDIR}posterior_varvec.pkl")
-
+    
     # Posterior variance (field)
     with open(f"{OUTDIR}posterior_varfield.pkl", "wb") as f:
         pickle.dump(posterior_variance_field, f, protocol=pickle.HIGHEST_PROTOCOL)
