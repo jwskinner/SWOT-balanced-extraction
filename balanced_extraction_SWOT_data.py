@@ -18,13 +18,13 @@ from concurrent.futures import ProcessPoolExecutor
 # --------------------------------------------------
 t = swot.Timer()
 
-#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
-pass_number = 17
-lat_min = 30.0 #28
-lat_max = 38.0 #35
-RHO_L_KM = 4.0  # Gaussian smoothing scale in reconstruction; 0 = no smoothing
-include_nadir = False # if false do not use nadir data in the balanced extraction (but still use it for spectral fits and plotting)
+data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL_VD/'
+#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
+pass_number = 9
+lat_min = 28.0 #28
+lat_max = 35.0 #35
+RHO_L_KM = 0.0         # Gaussian smoothing scale in reconstruction; 0 = no smoothing
+include_nadir = True   # if false do not use nadir data in the balanced extraction (but still use it for spectral fits and plotting)
 
 if len(sys.argv) > 1: # pass number as command line argument
     pass_number = int(sys.argv[1])
@@ -33,7 +33,7 @@ if len(sys.argv) > 3: #lat range as command line arguments
     lat_min = float(sys.argv[2])
     lat_max = float(sys.argv[3])
 
-outdir = f"./balanced_extraction/SWOT_data_VD_NoNad/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
+outdir = f"./balanced_extraction/SWOT_data_Calval_VD/Pass_{pass_number:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
 os.makedirs(outdir, exist_ok=True)
 os.makedirs(f"{outdir}/plots", exist_ok=True)
 
@@ -96,7 +96,7 @@ p_nadir, cov_nadir = swot.fit_nadir_spectrum(
 )
 
 # Plot and save fits
-swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, f'{outdir}/spectral_fits.png')
+swot.plot_spectral_fits(karin, nadir, p_karin, p_nadir, output_filename = f'{outdir}/spectral_fits.png')
 swot.save_spectral_fit_results(f'{outdir}/spectral_fits.out', p_karin, cov_karin, p_nadir, cov_nadir)
 t.lap("Spectral fits complete")
 

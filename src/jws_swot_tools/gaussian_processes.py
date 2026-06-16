@@ -10,7 +10,8 @@ import jws_swot_tools as swot
 
 # --- Pairwise distance matrix ---
 def pairwise_r(x0, y0, x1=None, y1=None):
-    # Euclidean distances between (x0,y0) and (x1,y1)
+    """ Return the Euclidean distances between (x0,y0) and (x1,y1)"""
+    
     if x1 is None:  # square
         dx = x0[:, None] - x0[None, :]
         dy = y0[:, None] - y0[None, :]
@@ -21,6 +22,8 @@ def pairwise_r(x0, y0, x1=None, y1=None):
 
 # --- Grid Functions ---
 def make_karin_points(karin, unit):
+    """ Create the (x,y) coordinates of the KaRIn observation points in a regular grid, excluding the nadir gap."""
+    
     nx = karin.track_length
     ny = 2 * karin.swath_width
     gap = karin.middle_width
@@ -38,6 +41,8 @@ def make_karin_points(karin, unit):
         return Xk.flatten(), Yk.flatten()
 
 def make_nadir_points(karin, nadir, unit, offset=0):
+    """ Create the (x,y) coordinates of the nadir observation points in a regular grid, centered in the nadir gap."""
+    
     nn = nadir.track_length
     ny = 2*karin.swath_width
     delta_k = karin.dx
@@ -52,6 +57,8 @@ def make_nadir_points(karin, nadir, unit, offset=0):
         return xn, yn
 
 def make_karin_points_from_data(karin, index): # Converts karin lats, lons into m grid
+    """ Create the (x,y) coordinates of the KaRIn observation points in a regular grid."""
+    
     lons = karin.lon[index, :, :]
     lats = karin.lat[index, :, :]
 
@@ -81,6 +88,8 @@ def make_karin_points_from_data(karin, index): # Converts karin lats, lons into 
     return x_valid, y_valid, x_target, y_target
 
 def make_target_grid(karin, unit, extend=False, dx=None, dy=None):
+    """ Create a regular grid of (x,y) coordinates covering the full SWOT observation.
+        Optionally extend beyond the observed points for larger grids."""
 
     # Use observed x/y extent from the data class 
     x_min = np.nanmin(karin.x_grid)
@@ -193,6 +202,8 @@ def make_target_grid_from_data(x_shifted, y_shifted, valid_mask, extra_width=4):
     return x_target, y_target
 
 def make_nadir_points_from_data(karin, nadir, index):
+    """ Create the (x,y) coordinates of the nadir observation points in a regular grid, centered in the nadir gap, using the lat/lon from the data."""
+
     lons = nadir.lon[index, :]  
     lats = nadir.lat[index, :]
 
@@ -232,7 +243,14 @@ def make_nadir_points_from_data(karin, nadir, index):
     return x_valid, y_valid
 
 # --- Covariance Functions --- 
-def cov(s, L = 5000, n=100000): # default 10,000km with 200,000 samples so 50m sampling resolution
+def cov(s, L = 5000, n=100000): 
+    """ 
+        Computes the 1D covariance function C(r) from a PSD S(k) using the discrete cosine transform (DCT)
+        
+        C(r) = ∫_0^∞ S(k) cos(2π k r) dk. 
+        
+        Defaults to 5,000km with 100,000 samples--i.e., a 50m sampling resolution.
+    """
     k = np.arange(n // 2 + 1) / L
     r = np.arange(n // 2 + 1) * L / n
     if callable(s): # we can pass either a function or an array in here
@@ -248,6 +266,8 @@ def cov(s, L = 5000, n=100000): # default 10,000km with 200,000 samples so 50m s
     # Compute spacing and max wavenumber
     delta_k = 1 / L
     k_max = n / (2 * L)
+    
+    # Diagnostics
     print("")
     print("---- Hankel Transform ----")
     print(f"Δk (spacing): {delta_k:.6f} cpkm")
@@ -255,6 +275,7 @@ def cov(s, L = 5000, n=100000): # default 10,000km with 200,000 samples so 50m s
     print(f"Variance from spectrum:   {variance_spectrum:8.6f}")
     print(f"Variance from covariance: {C_r[0]:8.6f}")
     print("")
+
     return scipy.interpolate.interp1d(r, C_r, kind='cubic', bounds_error=False, fill_value="extrapolate")
 
 def cov_2d_isotropic(s, L, n):
@@ -264,7 +285,7 @@ def cov_2d_isotropic(s, L, n):
     """
     from scipy.special import j0
 
-    # k-grid (uniform like yours)
+    # k-grid 
     k = np.arange(n // 2 + 1) / L                         # [cpkm]
     dk = 1.0 / L                                          # [cpkm]
     S_k = s(k)                                            # [variance per cpkm^2]
@@ -275,20 +296,23 @@ def cov_2d_isotropic(s, L, n):
     # 2D Hankel (order 0): C(r) = Σ S(k) J0(2π k r) (2π k dk)
     kr = (2.0 * np.pi) * np.outer(r, k)                   # dimensionless
     J = j0(kr)
-    weights = 2.0 * np.pi * k * dk                        # (2π k dk)
+    weights = 2.0 * np.pi * k * dk                        # (2pi k dk)
 
     C_r = (J * (S_k * weights)[None, :]).sum(axis=1)
     integrand = S_k * k
+    
     variance_spectrum = 2.0 * np.pi * (
         0.5 * integrand[0] + integrand[1:-1].sum() + 0.5 * integrand[-1]
     ) * dk
     variance_covariance = C_r[0]
+    
     if variance_covariance != 0:
         C_r *= (variance_spectrum / variance_covariance)
 
-    # Report the same diagnostics you print today
     delta_k = dk
     k_max = n / (2.0 * L)
+    
+    # print diagnostics
     print("")
     print("---- Hankel Transform ----")
     print(f"Δk (spacing): {delta_k:.6f} cpkm")
@@ -301,7 +325,8 @@ def cov_2d_isotropic(s, L, n):
 
 def make_cov_from_psd(S, L=5_000, n=5_000_000, isotropic_2d=False):
     """
-    Wrapper to compute covariance from a PSD S(k). isotropic_2d=True uses 2D isotropic Hankel transform.
+    Wrapper to compute covariance from a PSD S(k). 
+    Isotropic_2d=True uses 2D isotropic Hankel transform.
     """
     if isotropic_2d:
         return cov_2d_isotropic(S, L, n)
@@ -309,7 +334,11 @@ def make_cov_from_psd(S, L=5_000, n=5_000_000, isotropic_2d=False):
         return swot.cov(S, L, n)
 
 def build_covariance_matrix(cov_func, x, y):
+    """ Builds the covariance matrix C for observation points (x,y) 
+    using the provided covariance function."""
+
     print("Calculating covariance matrices...")
+
     return cov_func(np.hypot(x[:, None] - x, y[:, None] - y))
 
 def build_noise_matrix(nk_func, xk, yk, sigma, nn, n_obs):
@@ -321,13 +350,13 @@ def build_noise_matrix(nk_func, xk, yk, sigma, nn, n_obs):
 
 def balanced_covariance_func(
     params,
-    cutoff=2.0,
-    max_radius=5_000,
-    num_points=500_000, # gives 1m resolution
-    smooth=False,
-    scale_km=None,
-    taper = True, # not a parameter in the fit, prevents aliasing on the 2km grid
-):
+    cutoff = 2.0,
+    max_radius = 5_000,
+    num_points = 500_000, # gives 1m resolution
+    smooth = False,
+    scale_km = None,
+    taper = True, # taper the covariance function to prevent Gibbs at high k
+    ):
 
     # Unpack parameters
     A_b, lam_b, s_param = params[0], params[1], params[2]
@@ -351,11 +380,20 @@ def balanced_covariance_func(
     cov_func = swot.cov(S, max_radius, num_points)
     return cov_func
 
-def noise_covariance_func(params, lam_n=100, cutoff=2.0, max_radius=5_000, num_points=500_000, taper=True):
+def noise_covariance_func(
+    params, 
+    lam_n=100, 
+    cutoff=2.0, 
+    max_radius=5_000, 
+    num_points=500_000, 
+    taper=True
+    ):
+    
     """
     Creates a spatial covariance function for the unbalanced (KaRIN noise) component
     from a parameter vector.
     """
+    
     # Unpack parameters from the input vector
     A_n, s_n = params[3], params[5]
     
@@ -371,18 +409,26 @@ def noise_covariance_func(params, lam_n=100, cutoff=2.0, max_radius=5_000, num_p
     return cov_func
 
 def cholesky_decomp(M, name="Matrix", jitter=False):
+    """ Performs the Cholesky decomposition of a matrix M and prints the time taken. 
+        Optionally adds jitter to the diagonal if needed."""
+
     print(f"Performing Cholesky decomposition for {name}...")
     start_time = time.time()
+    
     if jitter: 
         eps = 1e-8 * np.trace(M) / M.shape[0]
         M_jittered = M + eps * np.eye(M.shape[0]) # jitter the diagonal if we need it but turned off for now
         F = la.cholesky(M_jittered)
+    
     else: 
         F = la.cholesky(M)
+    
     print(f"Cholesky({name}) time: {time.time() - start_time:.4f} seconds")
+    
     return F
 
 def generate_signal_and_noise(F, Fk, sigma, nxny, nn):
+    """ Generates random draw balanced signal and noise"""
     h = F @ np.random.randn(nxny + nn)
     eta_k = Fk @ np.random.randn(nxny)
     eta_n = sigma * np.random.randn(nn)
@@ -467,10 +513,12 @@ def estimate_signal_on_target_fast(R, C, N, h):
     return ht
 
 def balanced_psd_from_params(params):
+    """ Returns B(k) from Equation (2) in the paper. """
     A_b, lam_b, s_b = params[0], params[1], params[2]
     return lambda k: A_b / (1.0 + (lam_b * k)**s_b)
 
 def karin_noise_psd_from_params(params, lam_n=100):
+    """ Returns N(k) from Equation (2) in the paper. """
     # Using (A_n, s_n) at indices [3], [5] from the KaRIn fit
     A_n, s_n = params[3], params[5]
     return lambda k: A_n / (1.0 + (lam_n * k)**2)**(0.5 * s_n)

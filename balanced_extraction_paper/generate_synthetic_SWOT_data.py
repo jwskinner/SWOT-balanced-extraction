@@ -29,7 +29,7 @@ folder = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" # 
 os.makedirs(folder, exist_ok=True)
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(data_folder, pass_num)
 
-sample_index = swot.get_best_sample_index(karin_files, lat_min, lat_max) 
+sample_index = swot.get_best_sample_index(karin_files, lat_min, lat_max)
 indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], lat_min, lat_max)
 indxs, track_length_nadir = swot.get_nadir_track_indices(nadir_files[sample_index][0], lat_min, lat_max)
 dims_SWOT = [len(shared_cycles), track_length, track_length_nadir]
@@ -41,6 +41,11 @@ swot.process_karin_data(karin)
 
 swot.load_nadir_data(nadir_files, lat_min, lat_max, nadir)
 swot.process_nadir_data(nadir)
+
+# Clear Nadir Outliers
+bad_track_index = 63
+nadir.ssh[bad_track_index, :] = np.nan
+nadir.ssha[bad_track_index, :] = np.nan
 
 # Generate coordinates
 karin.coordinates()
@@ -207,7 +212,7 @@ print("Saved")
 # Paper Fig. 6 a): Three field maps
 # --------------------
 
-index = 10 # index for Fig 6 is 40
+index = 40 # index for Fig 6 is 40
 
 cmap = cmocean.cm.balance
 
@@ -320,13 +325,13 @@ k_karin = karin.wavenumbers_cpkm
 k_nadir = nadir.wavenumbers_cpkm
 
 ax2.loglog(karin_NA.wavenumbers_cpkm, karin_NA.spec_alongtrack_av, color='tab:purple', label='Simulation', linewidth=2.0)
-ax2.loglog(spec_ssh_noisy.freq_line,    spec_ssh_noisy,           '-',  color='tab:orange', label='Synthetic KaRIn', linewidth=2.0)
-ax2.loglog(k_karin,                     karin.spec_alongtrack_av, '-',  color='tab:blue',   label='SWOT KaRIn', linewidth=2.0)
-ax2.loglog(k_nadir,                     spec_nad_noisy,           '-',  color='tab:green',  label='Synthetic Nadir', linewidth=2.0)
-ax2.loglog(k_nadir,                     nadir.spec_alongtrack_av, '-',  color='tab:red',    label='SWOT Nadir', linewidth=2.0)
+ax2.loglog(spec_ssh_noisy.freq_line, spec_ssh_noisy, '-', color='tab:orange', label='Synthetic KaRIn', linewidth=2.0)
+ax2.loglog(k_karin, karin.spec_alongtrack_av, '-',  color='tab:blue',   label='SWOT KaRIn', linewidth=2.0)
+ax2.loglog(k_nadir, spec_nad_noisy,'-',  color='tab:green',  label='Synthetic Nadir', linewidth=2.0)
+ax2.loglog(k_nadir, nadir.spec_alongtrack_av, '-',  color='tab:red',    label='SWOT Nadir', linewidth=2.0)
 
-ax2.set_xlabel("Wavenumber [cpkm]", fontsize=13)
-ax2.set_ylabel("Power spectral density [cm$^2$cpkm$^{-1}$]", fontsize=13)
+ax2.set_xlabel("Wavenumber (cpkm)", fontsize=13)
+ax2.set_ylabel("PSD (cm$^2$/cpkm)", fontsize=13)
 ax2.legend(loc='lower left', fontsize=12, frameon=False)
 
 # yticks = ax2.get_yticks()

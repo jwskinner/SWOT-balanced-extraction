@@ -168,6 +168,24 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
     time_cycle_dt  = np.empty(karin.num_cycles, dtype='datetime64[ns]')
     time_cycle_dt[:] = np.datetime64('NaT')
     karin.quality_mask = None
+
+    # Additional quality flags to check that might not be folded into ssh_karin2_qual
+    # list of all Expert Quality flags for reference
+    all_quality_flags = ( 
+        'ssha_karin_qual', 'ssha_karin_2_qual', 
+        'ssh_karin_qual', 'ssh_karin_2_qual',
+        'sig0_karin_qual', 'sig0_karin_2_qual',
+        'swh_karin_qual', 'wind_speed_karin_qual', 'wind_speed_karin_2_qual',
+        'height_cor_xover_qual', 'orbit_qual', 'rad_surface_type_flag',
+        'ancillary_surface_classification_flag', 'dynamic_ice_flag', 
+        'rain_flag', 'sc_event_flag'
+    )
+
+    quality_flags_to_mask = ( 
+        'ssha_karin_qual', 'ssha_karin_2_qual', 
+        'ssh_karin_qual', 'ssh_karin_2_qual', 
+        'rain_flag', 'dynamic_ice_flag'
+    )
     
     for n, (filename, cycle) in enumerate(karin_files_with_numbers):
         try:
@@ -185,6 +203,38 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                         (karin.num_cycles, 2, len(indx), swath_width),
                         dtype=bool
                     )
+
+                # --- Add a dictionary 'Expert Fields' that holds other useful fields for the Expert data
+                vars_to_extract = [
+                    'model_dry_tropo_cor', 'model_wet_tropo_cor', 'rad_wet_tropo_cor', 
+                    'wind_speed_karin', 'swh_karin', 'swh_model', 'rain_rate'
+                ]
+
+                if not hasattr(karin, 'extracted_fields'):
+                    karin.expert_fields = {}
+
+                    # Check if we are loading the expert data
+                    any_var_present = any(var in data.variables for var in vars_to_extract)
+                    if any_var_present and n == 0:
+                        print("Expert Data, loading variables:")
+                    for var in vars_to_extract:
+                        if var in data.variables:
+                            if n == 0: 
+                                print(f"   -- {var}")
+                            cross_dim = data.variables[var].shape[1] if data.variables[var].ndim > 1 else 1
+                            karin.expert_fields[var] = np.full((karin.num_cycles, len(indx), cross_dim), np.nan)
+
+                # Extract and scale data for the current cycle
+                for var in vars_to_extract:
+                    if var in data.variables:
+                        val = data.variables[var][indx]
+                        # Apply explicit scale factor if it exists to ensure proper units
+                        if hasattr(data.variables[var], 'scale_factor'):
+                            val = val * data.variables[var].scale_factor
+                        # Apply to KaRIn data class   
+                        karin.expert_fields[var][n, :, :] = val if val.ndim > 1 else val[:, np.newaxis]
+                
+                # --- End of added section for the Expert data ---
             
                 # --- mean time over those indices (NaNs ignored) ---
                 if 'time' in data.variables:
@@ -200,7 +250,7 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                 # WHOLE CYCLE DROP -- (if theres a NaN drop everything)
                 drop_cycle = False
                 
-                # Check both sides to see if either fails the 20% threshold
+                # Check both sides to see if either fails the 10% threshold
                 for side in [0, 1]:
                     i0 = 34 * side + 5 # start 5 points in to avoid the edges 
                     i1 = i0 + swath_width
@@ -236,7 +286,20 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                     i1 = i0 + swath_width
             
                     ssha = data['ssha_karin_2'][indx, i0:i1]
-                    qual = data['ssha_karin_2_qual'][indx, i0:i1]
+                    
+                    # Use np.copy so we can safely augment the array with additional flags
+                    qual = np.copy(data['ssha_karin_2_qual'][indx, i0:i1])
+                    
+                    # Fold extra flags into a global quality_flag mask
+                    if n == 0 and side == 0:
+                        print("Checking KaRIn Quality Flags")
+                    for flag_name in quality_flags_to_mask:
+                        if flag_name in data.variables:
+                            if n == 0 and side == 0:
+                                print(f"  -- {flag_name}")
+                            flag_data = data.variables[flag_name][indx, i0:i1]
+                            qual[flag_data != 0] = 1
+
                     xcor = data['height_cor_xover'][indx, i0:i1]
                     tide = data['internal_tide_hret'][indx, i0:i1]
                     lat  = data['latitude'][indx, i0:i1]
@@ -395,6 +458,307 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
 
     return summary
 
+# def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=True, dropqual=False, dilation = True):
+
+#     def _grow_bad_mask(qual, pad_along=1, pad_across=1): # grows a mask around the bad points
+#         bad = (qual != 0)
+#         # footprint is a (2*pad_along+1) x (2*pad_across+1) block
+#         footprint = np.ones((2 * pad_along + 1, 2 * pad_across + 1), dtype=bool)
+#         grown_bad = binary_dilation(bad, structure=footprint)
+#         return grown_bad
+
+#     swath_width = karin.swath_width
+#     initial_good_strips = []
+    
+#     # Lists to track specific cycle-level outcomes
+#     bad_strips_quality = []      # Tracks specific (cycle, side) tuples
+#     cycles_dropped_quality = []  # Tracks whole cycles dropped due to >20% bad data
+#     cycles_passed_quality = []   # Tracks cycles that passed the 20% check
+    
+#     # one value per cycle
+#     time_cycle_num = np.full(karin.num_cycles, np.nan)
+#     time_cycle_dt  = np.empty(karin.num_cycles, dtype='datetime64[ns]')
+#     time_cycle_dt[:] = np.datetime64('NaT')
+#     karin.quality_mask = None
+
+#     # Additional quality flags to check that might not be folded into ssh_karin2_qual
+#     # list of all Expert Quality flags
+#     all_quality_flags = ( 
+#         'ssha_karin_qual', 'ssha_karin_2_qual', 
+#         'ssh_karin_qual', 'ssh_karin_2_qual',
+#         'sig0_karin_qual', 'sig0_karin_2_qual',
+#         'swh_karin_qual', 'wind_speed_karin_qual', 'wind_speed_karin_2_qual',
+#         'height_cor_xover_qual', 'orbit_qual', 'rad_surface_type_flag',
+#         'ancillary_surface_classification_flag', 'dynamic_ice_flag', 
+#         'rain_flag', 'sc_event_flag'
+#     )
+
+#     quality_flags_to_mask = ( 
+#         'ssha_karin_qual', 'ssha_karin_2_qual', 
+#         'ssh_karin_qual', 'ssh_karin_2_qual',
+#         'sig0_karin_qual', 'sig0_karin_2_qual', 
+#         'height_cor_xover_qual', 'dynamic_ice_flag', 
+#         'rain_flag', 'sc_event_flag'
+#     )
+    
+#     for n, (filename, cycle) in enumerate(karin_files_with_numbers):
+#         try:
+#             with nc.Dataset(filename, 'r') as data:
+#                 # build the along-track index 
+#                 fp_latitude = data['latitude']
+#                 mid_col = fp_latitude.shape[1] // 2
+#                 lat_center = fp_latitude[:, mid_col]
+#                 indx = np.where((lat_center >= lat_min) & (lat_center <= lat_max))[0]
+#                 if indx.size == 0:
+#                     continue
+
+#                 if karin.quality_mask is None:
+#                     karin.quality_mask = np.zeros(
+#                         (karin.num_cycles, 2, len(indx), swath_width),
+#                         dtype=bool
+#                     )
+
+#                 # --- Add a dictionary 'Expert Fields' that holds other useful fields for the Expert data
+#                 vars_to_extract = [
+#                     'model_dry_tropo_cor', 'model_wet_tropo_cor', 'rad_wet_tropo_cor', 
+#                     'wind_speed_karin', 'swh_karin', 'swh_model', 'rain_rate'
+#                 ]
+
+#                 if not hasattr(karin, 'extracted_fields'):
+#                     karin.expert_fields = {}
+
+#                     # Check if we are loading the expert data
+#                     any_var_present = any(var in data.variables for var in vars_to_extract)
+#                     if any_var_present and n == 0:
+#                         print("Expert Data, loading variables:")
+#                     for var in vars_to_extract:
+#                         if var in data.variables:
+#                             if n == 0: 
+#                                 print(f"   -- {var}")
+#                             cross_dim = data.variables[var].shape[1] if data.variables[var].ndim > 1 else 1
+#                             karin.expert_fields[var] = np.full((karin.num_cycles, len(indx), cross_dim), np.nan)
+
+#                 # Extract and scale data for the current cycle
+#                 for var in vars_to_extract:
+#                     if var in data.variables:
+#                         val = data.variables[var][indx]
+#                         # Apply explicit scale factor if it exists to ensure proper units
+#                         if hasattr(data.variables[var], 'scale_factor'):
+#                             val = val * data.variables[var].scale_factor
+#                         # Apply to KaRIn data class    
+#                         karin.expert_fields[var][n, :, :] = val if val.ndim > 1 else val[:, np.newaxis]
+                
+#                 # --- End of added section for the Expert data ---
+            
+#                 # --- mean time over those indices (NaNs ignored) ---
+#                 if 'time' in data.variables:
+#                     tvar_nc = data.variables['time']
+#                     tvals   = np.asarray(tvar_nc[indx])
+#                     if tvals.size > 0:
+#                         tmean = float(np.nanmean(tvals))
+#                         time_cycle_num[n] = tmean
+#                         # Assuming cf_to_datetime64 is available in your scope
+#                         time_cycle_dt[n]  = cf_to_datetime64([tmean], tvar_nc)[0]
+            
+
+#                 # WHOLE CYCLE DROP -- (if theres a NaN drop everything)
+#                 drop_cycle = False
+                
+#                 # Check both sides to see if either fails the 20% threshold
+#                 for side in [0, 1]:
+#                     i0 = 34 * side + 5 # start 5 points in to avoid the edges 
+#                     i1 = i0 + swath_width
+#                     qual = data['ssha_karin_2_qual'][indx, i0:i1]
+#                     total_pts = np.size(qual)
+                    
+#                     # Calculate fraction of bad points
+#                     bad_frac = np.sum(qual != 0) / total_pts if total_pts > 0 else 1.0
+                    
+#                     if bad_frac > 0.10: # 10% threshold on bad data then drop cycle
+#                         drop_cycle = True
+#                         break # Stop checking sides, the whole cycle is dead
+                
+#                 if drop_cycle:
+#                     # Record the cycle as dropped
+#                     cycles_dropped_quality.append(cycle)
+                    
+#                     # Mark both strips as bad for consistency in strip-level tracking
+#                     bad_strips_quality.append((cycle, 0))
+#                     bad_strips_quality.append((cycle, 1))
+                    
+#                     if verbose:
+#                         print(f"KaRIn Cycle {cycle} dropped: >20% bad-quality points in at least one strip.")
+#                     continue  # Skip this cycle entirely, do not load into karin object
+
+#                 cycles_passed_quality.append(cycle)
+
+#                 # ---------------------------------------------------------
+#                 # PROCESS DATA (Cycle Passed Pre-check)
+#                 # ---------------------------------------------------------
+#                 for side in [0, 1]:
+#                     i0 = 34 * side + 5
+#                     i1 = i0 + swath_width
+            
+#                     ssha = data['ssha_karin_2'][indx, i0:i1]
+#                     qual = data['ssha_karin_2_qual'][indx, i0:i1]
+#                     xcor = data['height_cor_xover'][indx, i0:i1]
+#                     tide = data['internal_tide_hret'][indx, i0:i1]
+#                     lat  = data['latitude'][indx, i0:i1]
+#                     lon  = data['longitude'][indx, i0:i1]
+
+#                     karin.lat_full = np.array(data.variables['latitude'][indx,:], copy=True)
+#                     karin.lon_full = np.array(data.variables['longitude'][indx,:], copy=True)
+
+#                     if np.ma.is_masked(ssha) or np.ma.is_masked(xcor) or np.any(qual != 0):
+#                         bad_strips_quality.append((cycle, side))
+#                         if dropqual:
+#                             continue
+
+#                     ssha_combined = ssha + xcor + tide
+#                     if dilation: # applies a binary dilation to the bad quality mask to filter non flagged points next to bad points
+#                         bad_orig = (qual != 0)
+#                         bad_grown = _grow_bad_mask(qual, pad_along=2, pad_across=2)
+#                         ssha_masked = np.where(bad_grown, np.nan, ssha_combined)
+#                         tide_masked = np.where(bad_grown, np.nan, tide)
+#                     else: 
+#                         ssha_masked   = np.where(qual != 0, np.nan, ssha_combined)
+#                         tide_masked   = np.where(qual != 0, np.nan, tide)
+
+#                     j_slice = slice(0, swath_width) if side == 0 else slice(-swath_width, None)
+
+#                     if karin.ssh.ndim == 3 and karin.ssh.shape[1] == 1:
+#                         karin.lat[n, 0, j_slice]  = lat
+#                         karin.lon[n, 0, j_slice]  = lon
+#                         karin.ssh[n, 0, j_slice]  = ssha_masked
+#                         karin.tide[n, 0, j_slice] = tide_masked
+#                     else:
+#                         karin.lat[n, :, j_slice]  = lat
+#                         karin.lon[n, :, j_slice]  = lon
+#                         karin.ssh[n, :, j_slice]  = ssha_masked
+#                         karin.tide[n, :, j_slice] = tide_masked
+
+#                     initial_good_strips.append((cycle, side))
+#                     karin.lon_min = np.nanmin(karin.lon[n, :, :])
+#                     karin.lon_max = np.nanmax(karin.lon[n, :, :])
+#                     karin.quality_mask[n, side, :, :] = bad_grown
+
+#         except FileNotFoundError:
+#             print(f"Error: File not found {filename}")
+#         except Exception as e:
+#             print(f"Error processing file {filename}, cycle {cycle}: {e}")
+
+#     # --- variance filtering & summary ---
+#     karin.good_strips_list = np.empty((0, 2))
+#     karin.removed_strips_high_variance = []
+
+#     if not initial_good_strips:
+#         print("No strips passed initial quality checks. Skipping variance-based filtering.")
+#         outlier_n_indices = np.array([], dtype=int)
+#         karin.good_strips_list = np.array(initial_good_strips)
+#     else:
+#         threshold = 10.0
+#         ssha_array = np.copy(karin.ssh)
+#         varts = np.nanvar(ssha_array, axis=(1, 2))
+        
+#         if np.all(np.isnan(varts)) or varts.size == 0:
+#             print("Warning: All per-file variances are NaN or no data. Skipping high-variance removal.")
+#             outlier_n_indices = np.array([], dtype=int)
+#             karin.good_strips_list = np.array(initial_good_strips)
+#         else:
+#             overall_var = np.nanvar(ssha_array)
+#             if np.isnan(overall_var) or overall_var == 0:
+#                 print(f"Warning: Overall SSH variance is {overall_var}.")
+#                 outlier_n_indices = np.array([], dtype=int)
+#             else:
+#                 outlier_n_indices = np.where(varts > threshold * overall_var)[0]
+            
+#             print(f"Overall SSH variance (overall_var): {overall_var}")
+            
+#             # Map outlier indices back to Cycle numbers
+#             outlier_cycle_numbers = set()
+#             if len(outlier_n_indices) > 0:
+#                 print(f"File indices with outlier variance: {outlier_n_indices}")
+#                 for n_idx in outlier_n_indices:
+#                     if 0 <= n_idx < len(karin_files_with_numbers):
+#                         outlier_cycle_numbers.add(karin_files_with_numbers[n_idx][1])
+#                 print(f"High variance cycle numbers: {outlier_cycle_numbers}")
+
+#             initial_good_strips_np = np.array(initial_good_strips)
+            
+#             if initial_good_strips_np.size > 0 and outlier_cycle_numbers:
+#                 strip_cycles = initial_good_strips_np[:, 0].astype(int)
+#                 is_high_var = np.isin(strip_cycles, list(outlier_cycle_numbers))
+#                 karin.good_strips_list = initial_good_strips_np[~is_high_var]
+                
+#                 removed_temp = initial_good_strips_np[is_high_var]
+#                 karin.removed_strips_high_variance = sorted([tuple(map(int, row)) for row in removed_temp])
+#             else:
+#                 karin.good_strips_list = initial_good_strips_np
+
+#     if 'outlier_n_indices' in locals() and len(outlier_n_indices) > 0:
+#         for n_idx in outlier_n_indices:
+#             if 0 <= n_idx < karin.ssh.shape[0]:
+#                 karin.ssh[n_idx, :, :] = np.nan
+
+#     karin.bad_strips_quality = sorted(list(set(bad_strips_quality)))
+
+#     print(f"----------------------------------")
+#     print(f"Total Number of Good KaRIn strips : {len(karin.good_strips_list)}")
+#     print(f"Number of Quality Masked KaRIn strips : {len(karin.bad_strips_quality)}")
+#     print(f"Number of High Variance strips removed : {len(karin.removed_strips_high_variance)}")
+#     print(f"Number of Good Cycles: {len(cycles_passed_quality)}")
+#     print(f"Number of Cycles dropped (>10% masked): {len(cycles_dropped_quality)}")
+#     print(f"----------------------------------\n")
+
+#     if verbose:
+#         print("Good strips (cycle, side):")
+#     good_cycles = []
+#     if karin.good_strips_list.size > 0:
+#         for c, s in karin.good_strips_list:
+#             if verbose:
+#                 print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+#             good_cycles.append(c)
+
+#     if verbose:
+#         print("\nHigh variance strips removed (cycle, side):")
+#     hvar_cycles = []
+#     if karin.removed_strips_high_variance:
+#         for c, s in karin.removed_strips_high_variance:
+#             if verbose:
+#                 print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+#             hvar_cycles.append(c)
+
+#     if verbose:
+#         print("\nStrips failing quality checks (includes dropped cycles):")
+#     bad_cycles_from_strips = []
+#     if karin.bad_strips_quality:
+#         for c, s in karin.bad_strips_quality:
+#             if verbose:
+#                 print(f"  - Cycle: {int(c):4d}, Side: {int(s)}")
+#             bad_cycles_from_strips.append(c)
+
+#     # Final sets
+#     karin.good_cycles = sorted(set(good_cycles))
+#     karin.bad_cycles  = sorted(set(bad_cycles_from_strips))
+#     karin.hvar_cycles = sorted(set(hvar_cycles))
+    
+#     karin.cycles_dropped_quality = sorted(cycles_dropped_quality)
+#     karin.cycles_passed_quality = sorted(cycles_passed_quality)
+
+#     summary = {
+#         "good_strips": [tuple(map(int, x)) for x in karin.good_strips_list.tolist()] if karin.good_strips_list.size > 0 else [],
+#         "removed_high_variance": karin.removed_strips_high_variance,
+#         "other_strips_quality_issues": karin.bad_strips_quality,
+#         "cycles_dropped_quality": karin.cycles_dropped_quality,
+#         "cycles_passed_quality": karin.cycles_passed_quality
+#     }
+
+#     # store one-per-cycle times (mean over selected along-track indices)
+#     karin.time = time_cycle_num
+#     karin.time_dt  = time_cycle_dt
+
+#     return summary
+
 def process_karin_data(karin, cutoff_m=100e3, delta=2e3):
     '''Processes the KaRIn data to remove the high-pass filtered time-mean and return SSH anomalies'''
     swath_width = karin.swath_width
@@ -431,6 +795,18 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
     time_cycle_dt[:] = np.datetime64('NaT')
     cycle_numbers = np.full(nadir.num_cycles, np.nan)
 
+    # expansive list of quality flags for reference
+    quality_flags_all = (
+            'alt_qual', 'geo_qual', 'rad_qual', 'rain_flag', 'ice_flag',
+            'surface_classification_flag', 'meteo_map_availability_flag',
+            'rad_side_1_rain_flag', 'rad_side_1_sea_ice_flag', 'rad_side_1_surface_type_flag',
+            'rad_side_2_rain_flag', 'rad_side_2_sea_ice_flag', 'rad_side_2_surface_type_flag',
+            'rad_wet_tropo_cor_interp_qual'
+        )
+
+    # Quality flags we check
+    quality_flags_to_check = ('rain_flag', 'ice_flag', 'rad_wet_tropo_cor_interp_qual')
+
     for n, (filename, cycle) in enumerate(nadir_files_with_numbers):
         cycle_numbers[n] = cycle
         data = nc.Dataset(filename, 'r')
@@ -439,10 +815,28 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
             lats  = group['latitude'][:]
             lons  = group['longitude'][:]
             indxs = np.where((lats >= lat_min) & (lats <= lat_max))[0]
-            if indxs.size == 0:
+            
+            if indxs.size == 0: # there are no nadir points, skip
                 num_bad_cycles += 1
                 continue
-
+            
+            # --- Check Data Quality Flags & build point-level mask ---
+            bad_mask = np.zeros(len(indxs), dtype=bool)
+            if n == 0:
+                print("Checking Nadir Quality Flags")
+            for flag_name in quality_flags_to_check:
+                if flag_name in group.variables:
+                    if n == 0:
+                        print(f"  -- {flag_name}")
+                    flag_values = group.variables[flag_name][indxs]
+                    bad_mask |= (flag_values != 0)
+            
+            bad_frac_flags = bad_mask.sum() / len(indxs)
+            if bad_frac_flags > 0.10:
+                print(f"Nadir Cycle {cycle} dropped: >10% bad-quality flag points ({bad_frac_flags:.2%}).")
+                num_bad_cycles += 1
+                continue
+            
             # --- mean time ---
             if 'time' in group.variables:
                 tvar_nc = group.variables['time']
@@ -451,32 +845,34 @@ def load_nadir_data(nadir_files_with_numbers, lat_min, lat_max, nadir):
                     tmean = float(np.nanmean(tvals))
                     time_cycle_num[n] = tmean
                     time_cycle_dt[n]  = cf_to_datetime64([tmean], tvar_nc)[0]
-
+            
             if len(group['ku']['ssha']) <= indxs[-1]:
                 num_bad_cycles += 1
                 continue
-
+            
+            # --- Load SSH and apply point-level mask ---
             tide = group['internal_tide_hret'][indxs]
             ssha = group['ku']['ssha'][indxs] + tide
-
-            # ---  10% threshold bad quality points ---
-            total_pts = ssha.size
-            if total_pts > 0:
-                num_bad_pts = np.sum(ssha.mask)
-                bad_frac = num_bad_pts / total_pts
-                if bad_frac > 0.10:
-                    print(f"Nadir Cycle {cycle} dropped: >10% bad-quality nadir points ({bad_frac:.2%}).") # tried 20 but 10 better
-                    num_bad_cycles += 1
-                    continue
-
+            
+            ssha_data = ssha.filled(np.nan)
+            ssha_data[bad_mask] = np.nan
+            
+            # 10% threshold on combined fill + flag mask
+            bad_frac_fill = np.sum(np.isnan(ssha_data)) / ssha_data.size
+            if bad_frac_fill > 0.10:
+                print(f"Nadir Cycle {cycle} dropped: >10% bad-quality nadir points ({bad_frac_fill:.2%}).")
+                num_bad_cycles += 1
+                continue
+            
             num_good_cycles += 1
             n_valid = min(nadir.track_length, len(indxs))
+            
             if n_valid == 0:
                 print(f"Warning: No valid indices found for cycle {cycle} in file {filename}.")
-
+            
             nadir.lat[n, :n_valid] = lats[indxs[:n_valid]]
             nadir.lon[n, :n_valid] = lons[indxs[:n_valid]]
-            nadir.ssh[n, :n_valid] = ssha[:n_valid].filled(np.nan)
+            nadir.ssh[n, :n_valid] = ssha_data[:n_valid]
 
         finally:
             data.close()

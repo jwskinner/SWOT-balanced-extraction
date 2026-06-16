@@ -87,6 +87,7 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
         p0=initial_guess,
         sigma=weights,
         bounds=bounds,
+        maxfev=10000 # added to increase number of evaluations (ocassionally needed for version D data)
     )
     perr = np.sqrt(np.diag(pcov)) 
     if verbose: 
@@ -134,15 +135,18 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
         np.log(spectrum[1:]),
         p0=initial_guess,
         sigma=weights,
-        bounds=bounds,
+        bounds=bounds
     )
 
     perr = np.sqrt(np.diag(pcov))
+    nadir_sigma = np.sqrt(popt[0] / (2 * data.dy_km))
 
     if verbose:
         print("") 
         print("---- Nadir spectrum parameters ----")
         print(f"Fitted Nadir noise floor N = {popt[0]} ± {perr[0]:.2e}")
+        print("")
+        print(f"Nadir σ = {nadir_sigma:.1f} cm")
         print("")
 
     # add to nadir class 

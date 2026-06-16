@@ -15,8 +15,8 @@ from scipy.linalg import cholesky
 # Config / paths
 # -------------------
 KARIN_NA_PATH   = f"./synthetic_swot_data/Pass_009_Lat28_35/karin_synth.pkl"               
-HT_ALL_PATH     = f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho0km/balanced_extraction_pass009.pkl"             
-POST_PATH       = f"./balanced_extraction/SYNTH_data/Pass_009_Lat28_35_rho0km/posterior.pkl"   
+HT_ALL_PATH     = f"./balanced_extraction/SYNTH_data_newnadir/Pass_009_Lat28_35_rho0km/balanced_extraction_pass009.pkl"             
+POST_PATH       = f"./balanced_extraction/SYNTH_data_newnadir/Pass_009_Lat28_35_rho0km/posterior.pkl"   
 FIG_OUT         = "cross_track_std.pdf"
 
 # -------------------
@@ -36,7 +36,7 @@ with open(POST_PATH, "rb") as f:
 # Pull truth and grid in [m]
 # -------------------
 h_truth_all_m = getattr(karin_NA, "ssha_full")   # (ntime, ny, nx), meters  
-h_truth_all_m = h_truth_all_m[:, :, 5:64]        # crop our truth field to match the SWOT area we start from index 5 and go + 50 + 9 in the gap
+h_truth_all_m = h_truth_all_m[:, :, 5:64]        # crop truth field to match the SWOT area we start from index 5 and go + 50 + 9 in the gap
 
 xg_m   = getattr(karin_NA, "x_grid")             # (ny, nx), meters
 yg_m   = getattr(karin_NA, "y_grid")             # (ny, nx), meters
@@ -291,3 +291,31 @@ summarize("v_g post σ",  post_std_v_cs,   "cm/s")
 summarize("v_g emp σ",   emp_std_v_cs,    "cm/s")
 summarize("ζ/f post σ",  post_std_zeta,   "")
 summarize("ζ/f emp σ",   emp_std_zeta,    "")
+
+# Print out also the values at karin and nadir locations (approx 30km, 60km, 90km across track)
+target_kms = [30.0, 60.0, 90.0]
+idxs = [np.argmin(np.abs(x_km - target)) for target in target_kms]
+
+print(f"Grid Points: Left={x_km[idxs[0]]:.1f}km | Nadir={x_km[idxs[1]]:.1f}km | Right={x_km[idxs[2]]:.1f}km\n{'-'*90}")
+
+# Pair up (Label, Theoretical Array, Empirical Array)
+comparison_pairs = [
+    ("SSHA [cm]",   post_std_h_cm_1d, emp_std_h_cm),
+    ("u_g [cm/s]",  post_std_u_cs,    emp_std_u_cs),
+    ("v_g [cm/s]",  post_std_v_cs,    emp_std_v_cs),
+    ("ζ/f [—]",     post_std_zeta,    emp_std_zeta)
+]
+
+for label, post, emp in comparison_pairs:
+    # Compute relative percent difference domain-wide: |Theory - Empirical| / Empirical * 100
+    pct_diff = np.abs(post - emp) / emp * 100
+    
+    p_v = [post[i] for i in idxs]
+    e_v = [emp[i] for i in idxs]
+    dev = [pct_diff[i] for i in idxs]
+    
+    print(f"{label:<12} | Theory (Post σ) -> L: {p_v[0]:.3f} | N: {p_v[1]:.3f} | R: {p_v[2]:.3f}")
+    print(f"{' ':12} | Truth  (Emp  σ) -> L: {e_v[0]:.3f} | N: {e_v[1]:.3f} | R: {e_v[2]:.3f}")
+    print(f"{' ':12} | Mismatch (%)   -> L: {dev[0]:.1f}%   | N: {dev[1]:.1f}%   | R: {dev[2]:.1f}%   [Domain Mean Dev: {np.nanmean(pct_diff):.1f}%, Max: {np.nanmax(pct_diff):.1f}%]")
+    print(f"{'-'*90}")
+print('='*90)

@@ -33,7 +33,7 @@ RHO_L_KM          = 0.0                                                        #
 COMPUTE_POSTERIOR = True                                                        # toggle posterior on target grid
 TAPER_CUTOFF      = 0.0                                                         # "T(k)" cutoff
 OUTNAME           = f"Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}_rho{int(RHO_L_KM)}km"
-OUTDIR            = f"./balanced_extraction/SYNTH_data/{OUTNAME}/"
+OUTDIR            = f"./balanced_extraction/SYNTH_data_newnadir/{OUTNAME}/"
 os.makedirs(os.path.dirname(OUTDIR), exist_ok=True)
 t = swot.Timer()
 

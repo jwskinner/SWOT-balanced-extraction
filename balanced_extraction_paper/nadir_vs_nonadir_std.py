@@ -2,6 +2,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from scipy.linalg import cho_factor, cho_solve, cholesky, block_diag, solve_triangular
 import scipy.linalg as la
 import scipy.sparse as sp
@@ -10,7 +11,45 @@ import pickle
 import os, sys
 from jws_swot_tools.julia_bridge import julia_functions as jl
 
+#--------------------------------------------------
+# Cached plot if .pkl file exists 
+#--------------------------------------------------
 CACHE = "nadir_vs_nonadir.pkl"
+
+def print_profile_values(x_km, data_dict):
+    """Prints a table of posterior std values at 30km, 60km, and 90km"""
+    # Find the closest indices in the x_km grid to our target locations
+    targets = [30, 60, 90]
+    idxs = [np.argmin(np.abs(x_km - t)) for t in targets]
+    
+    print("\n" + "="*85)
+    print(f" Values:(Closest grid points: {x_km[idxs[0]]:.1f}km, {x_km[idxs[1]]:.1f}km, {x_km[idxs[2]]:.1f}km)")
+    print("="*85)
+    print(f"{'Variable & Config':<32} | {'30 km (KaRIn)':<15} | {'60 km (Nadir)':<15} | {'90 km (KaRIn)':<15}")
+    print("-"*85)
+    
+    metrics = [
+        ("SSHA [cm]", "ssh_posterior_std"),
+        ("u_g [cm s^-1]", "grad_u_posterior_std"),
+        ("v_g [cm s^-1]", "grad_v_posterior_std"),
+        ("zeta/f [—]", "lap_posterior_std")
+    ]
+    
+    cases = [
+        ("", "KaRIn + Nadir"),
+        ("_k", "KaRIn only"),
+        ("_n", "Nadir only")
+    ]
+    
+    for label, base_key in metrics:
+        print(f"{label}")
+        for suffix, case_name in cases:
+            key = f"{base_key}{suffix}"
+            arr = data_dict[key]
+            v30, v60, v90 = arr[idxs[0]], arr[idxs[1]], arr[idxs[2]]
+            print(f"  +- {case_name:<26} | {v30:<15.4f} | {v60:<15.4f} | {v90:<15.4f}")
+        print("-"*85)
+    print("="*85 + "\n")
 
 def plot_from_cached(out):
     print("Plotting from cached file")
@@ -27,6 +66,9 @@ def plot_from_cached(out):
     grad_u_posterior_std_n = out["grad_u_posterior_std_n"]
     grad_v_posterior_std_n = out["grad_v_posterior_std_n"]
     lap_posterior_std_n    = out["lap_posterior_std_n"]
+
+    # print out the values in the KaRIn and nadir locations
+    print_profile_values(x_km, out)
 
     print(">>> Plotting (from cache)")
     import matplotlib.pyplot as plt
@@ -63,7 +105,10 @@ def plot_from_cached(out):
     axs[3].set_title(r'Geostrophic vorticity $\zeta_g / f$', fontsize = 11)
     axs[3].set_ylabel(r'Std.')
     axs[3].set_xlabel('Across track [km]')
-    axs[3].set_ylim(0.48, 0.55)
+    axs[3].set_ylim(0.42, 0.47)
+
+    # for ax in axs:
+    #     ax.yaxis.set_major_locator(ticker.LinearLocator(numticks=5))
 
     plt.savefig("karin_vs_nadir_std.pdf", bbox_inches="tight")
     plt.close(fig)
@@ -78,6 +123,7 @@ def plot_from_cached(out):
     axs2[0].set_ylabel('Std. [cm]')
     axs2[0].legend(fontsize=9, loc='lower right')
     axs2[0].set_ylim(0, 10)
+    print(f"Min Nad SSHA std: {np.nanmin(ssh_posterior_std_n[1:-1])}")
 
     axs2[1].plot(x_km[1:-1], grad_u_posterior_std_n[1:-1], '-', color='tab:green', lw=1.8, label='Nadir only')
     axs2[1].set_title(r'Along-track velocity $u_g$ ')
@@ -93,11 +139,61 @@ def plot_from_cached(out):
     axs2[3].set_title(r'Geostrophic vorticity $\zeta_g / f$')
     axs2[3].set_ylabel(r'Std.')
     axs2[3].set_xlabel('Across Track [km]')
-    axs2[3].set_ylim(0.50, 0.65)
+    axs2[3].set_ylim(0.5, 0.65)
+
+    print(np.max(lap_posterior_std_n[1:-1]))
+    print(np.min(lap_posterior_std_n[1:-1]))
 
     plt.savefig("nadir_only_std.pdf", bbox_inches="tight")
     plt.close(fig2)
     print(">>> Saved: nadir_only_std.pdf")
+
+    # ---- SUPERIMPOSED PLOT: All Three Lines ----
+    fig3, axs3 = plt.subplots(4, 1, figsize=(4.8, 10), dpi=150, sharex=True)
+    fig3.subplots_adjust(hspace=0.4, wspace=0.25)
+
+    # 1) SSH (cm)
+    axs3[0].plot(x_km[1:-1], ssh_posterior_std[1:-1], '-',  lw=1.8, label='KaRIn + Nadir')
+    axs3[0].plot(x_km[1:-1], ssh_posterior_std_k[1:-1], '--', lw=1.8, label='KaRIn only')
+    axs3[0].plot(x_km[1:-1], ssh_posterior_std_n[1:-1], '-.', color='tab:green', lw=1.8, label='Nadir only')
+    axs3[0].set_title('SSHA', fontsize = 11)
+    axs3[0].set_ylabel('Std. [cm]')
+    axs3[0].set_ylim(0.5, 1.5)
+    axs3[0].legend(fontsize=9, loc='upper center', bbox_to_anchor=(0.5, 1.5), ncol=3) # Moved legend up to fit 3 items
+
+    # 2) Geostrophic u (cm s^-1)
+    axs3[1].plot(x_km[1:-1], grad_u_posterior_std[1:-1], '-',  lw=1.8, label='KaRIn + Nadir')
+    axs3[1].plot(x_km[1:-1], grad_u_posterior_std_k[1:-1], '--', lw=1.8, label='KaRIn only')
+    axs3[1].plot(x_km[1:-1], grad_u_posterior_std_n[1:-1], '-.', color='tab:green', lw=1.8, label='Nadir only')
+    axs3[1].set_title(r'Along-track geostrophic velocity $u_g$ ', fontsize = 11)
+    axs3[1].set_ylabel(r'Std. [cm s$^{-1}$]')
+    axs3[1].set_ylim(7.0, 10)
+
+    # 3) Geostrophic v (cm s^-1)
+    axs3[2].plot(x_km[1:-1], grad_v_posterior_std[1:-1], '-',  lw=1.8, label='KaRIn + Nadir')
+    axs3[2].plot(x_km[1:-1], grad_v_posterior_std_k[1:-1], '--', lw=1.8, label='KaRIn only')
+    axs3[2].plot(x_km[1:-1], grad_v_posterior_std_n[1:-1], '-.', color='tab:green', lw=1.8, label='Nadir only')
+    axs3[2].set_title(r'Across-track geostrophic velocity $v_g$', fontsize = 11)
+    axs3[2].set_ylabel(r'Std. [cm s$^{-1}$]')
+    axs3[2].set_ylim(6, 15)
+
+    # 4) Geostrophic vorticity ζ/f (—)
+    axs3[3].plot(x_km[1:-1], lap_posterior_std[1:-1], '-',  lw=1.8, label='KaRIn + Nadir')
+    axs3[3].plot(x_km[1:-1], lap_posterior_std_k[1:-1], '--', lw=1.8, label='KaRIn only')
+    axs3[3].plot(x_km[1:-1], lap_posterior_std_n[1:-1], '-.', color='tab:green', lw=1.8, label='Nadir only')
+    axs3[3].set_title(r'Geostrophic vorticity $\zeta_g / f$', fontsize = 11)
+    axs3[3].set_ylabel(r'Std.')
+    axs3[3].set_xlabel('Across track [km]')
+    axs3[3].set_ylim(0.4, 0.55)
+
+    for ax in axs3:
+        ax.yaxis.set_major_locator(ticker.LinearLocator(numticks=4))
+
+    axs3[0].yaxis.set_major_locator(ticker.LinearLocator(numticks=5))
+
+    plt.savefig("all_combined_std.pdf", bbox_inches="tight")
+    plt.close(fig3)
+    print(">>> Saved: all_combined_std.pdf")
 
 # ---- Early exit path if cache exists ----
 if os.path.exists(CACHE):
@@ -106,6 +202,10 @@ if os.path.exists(CACHE):
         _out = pickle.load(f)
     plot_from_cached(_out)
     sys.exit(0)
+
+
+# ============================================================================================================
+# MAIN SCRIPT 
 
 # -----------------------------
 # Config
@@ -119,7 +219,7 @@ print(">>> Gathering file lists")
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(DATA_FOLDER, PASS_NUMBER)
 
 # pick a sample index to build array sizes
-sample_index = 2
+sample_index = 5
 indx, track_length = swot.get_karin_track_indices(karin_files[sample_index][0], LAT_MIN, LAT_MAX)
 indxs, track_length_nadir = swot.get_nadir_track_indices(nadir_files[sample_index][0], LAT_MIN, LAT_MAX)
 dims = [len(shared_cycles), track_length, track_length_nadir]
@@ -138,6 +238,11 @@ swot.process_karin_data(karin)
 print(">>> Loading Nadir")
 swot.load_nadir_data(nadir_files, LAT_MIN, LAT_MAX, nadir)
 swot.process_nadir_data(nadir)
+
+# Clear Nadir Outliers 
+bad_track_index = 63
+nadir.ssh[bad_track_index, :] = np.nan
+nadir.ssha[bad_track_index, :] = np.nan
 
 # Coordinates (meters) + spectra
 print(">>> Building coordinates and spectra")
@@ -203,16 +308,20 @@ print("  Building (C_obs, N_obs)")
 SIGMA_L_KM = 0.0
 
 # Specral Fit Parameters
-B_psd = swot.balanced_psd_from_params(p_karin)                 # B(k) balanced power spectrum model
-Nk_psd = swot.karin_noise_psd_from_params(p_karin)             # N_K(k) noise power spectrum model
-sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))  # cm
+# KaRIn
+B_psd = swot.balanced_psd_from_params(p_karin)       # B(k) balanced power spectrum model
+Nk_psd = swot.karin_noise_psd_from_params(p_karin)   # N_K(k) noise power spectrum model
+
+# Nadir
+sigma_n = np.sqrt(p_nadir[0] / (2.0 * nadir.dy_km))                 # [cm]
+print(f"Sigma_n: {sigma_n}")
 
 # Base kernels in [cm^2]
 n_samples = 100000
-l_sample = 5000
-kk = np.arange(n_samples // 2 + 1) / l_sample                  # wavenumber grid for transforms (200000 samples over 10000km as in swot.cov())
+l_sample  = 5000
+kk = np.arange(n_samples // 2 + 1) / l_sample                  
 
-Tfun  = lambda k: swot.taper(k, cutoff=2.0)                    # T(k) is taper function cutoff at 2km  
+Tfun     = lambda k: np.ones_like(k)#swot.taper(k, cutoff=2.0)            # Taper function cutoff at 2km (turned off)  
 C_B      = jl.cov(B_psd(kk), kk)                                          # C[B]
 C_BT     = jl.cov(jl.abel(jl.iabel(B_psd(kk), kk)*Tfun(kk), kk), kk)      # C[B T]
 C_NT2    = jl.cov(jl.abel(jl.iabel(Nk_psd(kk), kk)*Tfun(kk)**2, kk), kk)  # C[N T^2]
@@ -222,10 +331,10 @@ SIGMA    = 2 * np.pi * SIGMA_L_KM                               # σ convert to 
 DELTA    = 0.0 #(np.pi * karin.dx_km) / (2 * np.log(2))         # δ taper turned off 
 
 # Gaussian Smoothings and tapers combined
-G  = lambda k: np.exp(-((SIGMA**2) * (k**2)) / 2.0)            # Gassian smooth C[BG]
-G2 = lambda k: np.exp(-(SIGMA**2) * (k**2))                    # Target-Target smoothing C[BG^2]
-GT = lambda k: np.exp(-(((SIGMA**2 + DELTA**2)* k**2) / 2.0) ) # Taper + Gaussian Smooth C[BGT]
-T2 = lambda k: np.exp(-(DELTA**2) * (k**2))                    # Taper^2 C[BT^2]
+G  = lambda k: np.exp(-((SIGMA**2) * (k**2)) / 2.0)             # Gassian smooth C[BG]
+G2 = lambda k: np.exp(-(SIGMA**2) * (k**2))                     # Target-Target smoothing C[BG^2]
+GT = lambda k: np.exp(-(((SIGMA**2 + DELTA**2)* k**2) / 2.0) )  # Taper + Gaussian Smooth C[BGT]
+T2 = lambda k: np.exp(-(DELTA**2) * (k**2))                     # Taper^2 C[BT^2]
 
 C_B_G   = jl.cov(jl.abel(jl.iabel(B_psd(kk),  kk) * G(kk), kk), kk)
 C_B_G2  = jl.cov(jl.abel(jl.iabel(B_psd(kk),  kk) * G2(kk), kk), kk)
@@ -246,7 +355,6 @@ R_tt = np.asarray(C_B_G2(r_tt))
 R_NN = np.asarray(C_B(r_nn)) + (sigma_n**2) * np.eye(r_nn.shape[0])
      
 # Cross KaRIn–Nadir: C[B T]
-# This was the section that failed:
 R_KN = np.asarray(C_BT(r_kn))  
 R_NK = R_KN.T              
      
@@ -255,7 +363,6 @@ R_tK = np.asarray(C_B_TG(r_tk))     # C[BTG]
 R_tN = np.asarray(C_B_TG(r_tn))     # C[BG]
      
 # Assemble observation covariance
-# np.block and np.concatenate will now work as expected
 C_obs = np.block([[R_KK, R_KN],
                   [R_NK, R_NN]])
 R = np.concatenate([R_tK, R_tN], axis=1)
@@ -269,7 +376,7 @@ h_n = nadir.ssha[index][mask_n]*100             # in [cm]
 h_obs = np.concatenate([h_k, h_n])
 
 CF = la.cho_factor(C_obs, lower=True)
-z  = la.cho_solve(CF, h_obs)               # (C_obs)^{-1} h
+z  = la.cho_solve(CF, h_obs)                    # (C_obs)^{-1} h
 ht = R @ z                                 
 ht_map = (ht / 100.0).reshape(nyt, nxt).T       # back to [m] 
 
@@ -328,6 +435,7 @@ def gradient_operator(nx, ny, dx_km, dy_km):
                 Gy[k, idx(i, j-1)] = -0.5 / dy_km
                 Gy[k, idx(i, j+1)] =  0.5 / dy_km
     return Gx.tocsr(), Gy.tocsr()
+
 def laplacian_operator(nx, ny, dx_km, dy_km):
     N = ny * nx
     L = sp.lil_matrix((N, N))
@@ -375,8 +483,8 @@ Gx, Gy = gradient_operator(nxt, nyt, dx_km, dy_km)
 Lap    = laplacian_operator(nxt, nyt, dx_km, dy_km)
 
 # Scale to meters for physical units
-scale_grad = 1e-3   # d/dx_km -> d/dx_m
-scale_lap  = 1e-6   # d2/dx2_km -> d2/dx2_m
+scale_grad = 1e-3   # d/dx_km to d/dx_m
+scale_lap  = 1e-6   # d2/dx2_km to d2/dx2_m
 
 # Operators mapping SSH 
 g = 9.81
@@ -415,7 +523,7 @@ print("KaRIn-only posterior")
 xk_obs = xkk
 yk_obs = ykk
 
-h_obs_k = h_k                        # apply to just karin
+h_obs_k = h_k                       # apply to just karin
 C_obs_k = R_KK                      # only karin-karin covarariance
 R_k = R_tK                          # No nadir cross terms
 
@@ -437,7 +545,8 @@ P_k = R_tt - C_mean_k                                       # Posterior covarian
 posterior_variance_k = np.diag(P_k)
 post_var_k = posterior_variance_k.reshape(nyt, nxt)
 
-Lp_k = cholesky(P_k + 1e-12 * np.eye(P_k.shape[0]), lower=True)
+#Lp_k = cholesky(P_k + 1e-12 * np.eye(P_k.shape[0]), lower=True)
+Lp_k = cholesky(P_k, lower=True)
 
 Lp_k_arr = np.asarray(Lp_k)
 ULpk = Uop.dot(Lp_k_arr)
@@ -475,10 +584,11 @@ L_n, lower = la.cho_factor(C_obs_n, lower=True, check_finite=False, overwrite_a=
 W_n = solve_triangular(L_n, R_n.T, lower=True, check_finite=False, overwrite_b=False)
 
 C_mean_n = W_n.T @ W_n                                        # covariance of posterior mean R @ C_obs^{-1} @ R.T
-P_n = R_tt - C_mean_n                                       # Posterior covariance
+P_n = R_tt - C_mean_n                                         # Posterior covariance
 posterior_variance_n = np.diag(P_n)
 post_var_n = posterior_variance_n.reshape(nyt, nxt)
-Lp_n = cholesky(P_n + 1e-12 * np.eye(P_n.shape[0]), lower=True)
+#Lp_n = cholesky(P_n + 1e-12 * np.eye(P_n.shape[0]), lower=True)
+Lp_n = cholesky(P_n, lower=True)
 
 Lp_n_arr = np.asarray(Lp_n)
 ULpn = Uop.dot(Lp_n_arr)
@@ -502,15 +612,15 @@ std_zeta_n  = np.sqrt(var_zeta_vec_n).reshape(nyt, nxt)
 X = xt.reshape(nyt, nxt)
 x_km = X[0, :]  # across-track coordinate
 
-ssh_posterior_std     = np.mean(np.sqrt(post_var), axis=0)
-grad_u_posterior_std   = np.mean(std_u, axis=0)
-grad_v_posterior_std   = np.mean(std_v, axis=0)
-lap_posterior_std     = np.mean(std_zeta, axis=0)
+ssh_posterior_std       = np.mean(np.sqrt(post_var), axis=0)
+grad_u_posterior_std    = np.mean(std_u, axis=0)
+grad_v_posterior_std    = np.mean(std_v, axis=0)
+lap_posterior_std       = np.mean(std_zeta, axis=0)
 
-ssh_posterior_std_k   = np.mean(np.sqrt(post_var_k), axis=0)
-grad_u_posterior_std_k = np.mean(std_u_k, axis=0)
-grad_v_posterior_std_k = np.mean(std_v_k, axis=0)
-lap_posterior_std_k   = np.mean(std_zeta_k, axis=0)
+ssh_posterior_std_k     = np.mean(np.sqrt(post_var_k), axis=0)
+grad_u_posterior_std_k  = np.mean(std_u_k, axis=0)
+grad_v_posterior_std_k  = np.mean(std_v_k, axis=0)
+lap_posterior_std_k     = np.mean(std_zeta_k, axis=0)
 
 ssh_posterior_std_n     = np.mean(np.sqrt(post_var_n), axis=0)
 grad_u_posterior_std_n  = np.mean(std_u_n, axis=0)
@@ -585,6 +695,7 @@ axs2[0].plot(x_km[1:-1], ssh_posterior_std_n[1:-1], ':',  lw=1.8, label='Nadir o
 axs2[0].set_title('SSHA [cm]')
 axs2[0].set_ylabel('Std. [cm]')
 axs2[0].legend(fontsize=9)
+print(f"Min Nad SSHA std: {np.nanmin(ssh_posterior_std_n[1:-1])}")
 
 axs2[1].plot(x_km[1:-1], grad_u_posterior_std_n[1:-1], ':',  lw=1.8, label='Nadir only')
 axs2[1].set_title(r'$u_g$ [cm s$^{-1}$]')
