@@ -130,6 +130,7 @@ job_download_data
 # ignore any figures that get made 
 *.pdf 
 *.png
+*.npz
 
 # Ignore pickle files
 *.pkl
