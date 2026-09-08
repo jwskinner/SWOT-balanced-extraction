@@ -13,19 +13,27 @@ import jws_swot_tools as swot
 # --------------------------------------------------
 # CONFIG
 lat_min, lat_max, lon_min, lon_max = [52.5, 62.5, -37.0, -17.0] 
-lat_min, lat_max, lon_min, lon_max = [47.0, 65.0, -72.0, -50.0] 
+lat_min, lat_max, lon_min, lon_max = [47.0, 65.0, -72.0, -50.0]
+
+lat_min, lat_max, lon_min, lon_max = [27.0, 36.0, -74.0, -65.0] # NA Region
+lat_min, lat_max, lon_min, lon_max = [20, 30, -29, -21] # NATRE
+lat_min, lat_max, lon_min, lon_max = [-24.0, -16.0, -89.0, -81.0] # Stratus Mooring (8x8)
 
 tmin = "2023-07-10 00:00:00"
-tmax = "2026-03-20 23:59:59"
+tmax = "2026-12-10 23:59:59"
 short_karin_name = "SWOT_L2_LR_SSH_D"
 short_nadir_name = "SWOT_L2_NALT_GDR_D"
 
 download_dir = "/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/"
-download     = True       # download the passes or just plot them
-basic        = True      # download the basic files
-expert       = True       # download the expert files
-min_points   = 25000      # minimum data points inside box needed to count as a valid pass
-min_granules = 100        # minimum number of granules a pass must have to be included
+download_dir = "/expanse/lustre/projects/cit197/jskinner1/du-paper-tests/outputs/SWOT/Stratus"
+
+download      = True       # download the passes or just plot them
+basic         = True       # download the basic files
+expert        = True       # download the expert files
+unsmoothed    = True
+min_points    = 25000      # minimum data points inside box needed to count as a valid pass
+min_granules  = 100        # minimum number of granules a pass must have to be included
+skip_existing = True       # check download_dir and skip downloading if the file already exists
 
 # Output box size in km
 lat0 = (lat_min + lat_max) / 2.0
@@ -174,9 +182,32 @@ print("Saved pass_preview.png")
 # DOWNLOAD (uses valid_passes from screening above)
 def download_batch(granules, download_dir, verbose=True):
     os.makedirs(download_dir, exist_ok=True)
-    downloaded = earthaccess.download(granules, local_path=download_dir, threads=4)
+    
+    # Filter out existing files if skip_existing is True
+    if skip_existing:
+        granules_to_download = []
+        for g in granules:
+            # Get the data link to extract the filename
+            data_links = g.data_links(access="direct") or g.data_links()
+            if data_links:
+                filename = data_links[0].split("/")[-1]
+                if not os.path.exists(os.path.join(download_dir, filename)):
+                    granules_to_download.append(g)
+        
+        skipped = len(granules) - len(granules_to_download)
+        if verbose and skipped > 0:
+            print(f"  Skipped {skipped} files (already exist).")
+    else:
+        granules_to_download = granules
+
+    if not granules_to_download:
+        if verbose:
+            print("  No new files to download in this batch.")
+        return []
+
+    downloaded = earthaccess.download(granules_to_download, local_path=download_dir, threads=4)
     if verbose:
-        print(f"Downloaded {len(downloaded)} files to {download_dir}")
+        print(f"  Downloaded {len(downloaded)} new files to {download_dir}")
     return downloaded
 
 if download:
@@ -199,6 +230,13 @@ if download:
                 temporal=(tmin, tmax),
                 granule_name=f"*_LR_SSH_Expert_*_{pass_num:03d}_*",
             )
+        if unsmoothed:
+             karin_unsmoothed = earthaccess.search_data(
+                short_name=short_karin_name,
+                temporal=(tmin, tmax),
+                granule_name=f"*_LR_SSH_Unsmoothed_*_{pass_num:03d}_*",
+            )
+
         nadir_pass = earthaccess.search_data(
             short_name=short_nadir_name,
             temporal=(tmin, tmax),
@@ -207,15 +245,22 @@ if download:
 
         basic_count  = len(karin_basic)  if basic  else 0
         expert_count = len(karin_expert) if expert else 0
-        print(f"  KaRIn Basic: {basic_count} | Expert: {expert_count} | Nadir: {len(nadir_pass)} granules")
+        unsmoothed_count = len(karin_unsmoothed) if unsmoothed else 0
+        print(f"  KaRIn Basic: {basic_count} | Expert: {expert_count} | Unsmoothed: {unsmoothed_count} | Nadir: {len(nadir_pass)} granules")
         
         # download karin (different versions)
         if basic: 
+            print("  -> Basic product:")
             download_batch(karin_basic, download_dir)
         if expert:
+            print("  -> Expert product:")
             download_batch(karin_expert, download_dir)
+        if unsmoothed: 
+            print("  -> Unsmoothed product:")
+            download_batch(karin_unsmoothed, download_dir)
         
         # download nadir 
+        print("  -> Nadir product:")
         download_batch(nadir_pass, download_dir)
         print(f"Completed: {pass_num}")
 

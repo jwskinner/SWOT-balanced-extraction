@@ -16,7 +16,7 @@ import cartopy.feature as cfeature
  
 # ───── Read and Process Data ─────
 # Read in the SWOT data for this pass
-pass_num = 9
+pass_num = 341
 lat_max = 35
 lat_min = 28
 
@@ -24,7 +24,7 @@ if len(sys.argv) > 1:
     pass_num = int(sys.argv[1])
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL/'
-#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE/'
+data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
 folder = f"./synthetic_swot_data/Pass_{pass_num:03d}_Lat{lat_min}_{lat_max}/" # folder to save data
 os.makedirs(folder, exist_ok=True)
 _, _, shared_cycles, karin_files, nadir_files = swot.return_swot_files(data_folder, pass_num)
@@ -43,9 +43,9 @@ swot.load_nadir_data(nadir_files, lat_min, lat_max, nadir)
 swot.process_nadir_data(nadir)
 
 # Clear Nadir Outliers
-bad_track_index = 63
-nadir.ssh[bad_track_index, :] = np.nan
-nadir.ssha[bad_track_index, :] = np.nan
+#bad_track_index = 63
+# nadir.ssh[bad_track_index, :] = np.nan
+# nadir.ssha[bad_track_index, :] = np.nan
 
 # Generate coordinates
 karin.coordinates()

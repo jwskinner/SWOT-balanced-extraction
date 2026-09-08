@@ -239,11 +239,14 @@ def load_karin_data(karin_files_with_numbers, lat_min, lat_max, karin, verbose=T
                 # --- mean time over those indices (NaNs ignored) ---
                 if 'time' in data.variables:
                     tvar_nc = data.variables['time']
-                    tvals   = np.asarray(tvar_nc[indx])
+                    raw = tvar_nc[indx]
+                    if np.ma.is_masked(raw) or isinstance(raw, np.ma.MaskedArray):
+                        tvals = np.ma.filled(raw.astype(float), np.nan)
+                    else:
+                        tvals = np.asarray(raw, dtype=float)
                     if tvals.size > 0:
                         tmean = float(np.nanmean(tvals))
                         time_cycle_num[n] = tmean
-                        # Assuming cf_to_datetime64 is available in your scope
                         time_cycle_dt[n]  = cf_to_datetime64([tmean], tvar_nc)[0]
             
 

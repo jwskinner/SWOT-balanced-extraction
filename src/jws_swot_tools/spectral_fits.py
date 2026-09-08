@@ -65,9 +65,10 @@ def karin_model(k, A_b, lam_b, s_param, A_n, lam_n, s_n, taper=False):
 def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose = True):
     '''Fits the balanced/unbalanced models to the averaged power spectrum'''
 
+    # we dont need to slice the spectrum here anymore, its done in karin.compute_spectra()
     track_length = data.track_length 
-    k = data.wavenumbers_cpkm[int(data.track_length/2):] # this is in units [1/km] 
-    spectrum_onesided = spectrum[int(track_length // 2):]
+    k = data.wavenumbers_cpkm    #[int(data.track_length/2):] # this is in units [1/km] 
+    spectrum_onesided = spectrum #[int(track_length // 2):]
     weights = np.sqrt(k[1:])
 
     # Defaults for initial guess and bounds
@@ -109,8 +110,9 @@ def fit_spectrum(data, spectrum, model, initial_guess=None, bounds=None, verbose
 def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds=None, verbose=True):
     ''' Fit only the noise parameter N in the nadir model, with balanced parameters fixed from KaRIn fit. '''
 
-    k = data.wavenumbers_cpkm[int(data.track_length/2):]
-    spectrum = spectrum[int(data.track_length/2):]
+    # same edit as above, the spectra are in onesided form by default now so no slicing needed
+    k = data.wavenumbers_cpkm   #[int(data.track_length/2):]
+    spectrum = spectrum         #[int(data.track_length/2):]
     weights = np.sqrt(k[1:])
 
     # Fixed balanced parameters from KaRIn fit
@@ -118,7 +120,7 @@ def fit_nadir_spectrum(data, spectrum, poptcwg_karin, initial_guess=None, bounds
     lam_b_fixed   = poptcwg_karin[1]
     s_param_fixed = poptcwg_karin[2]
 
-    # Only N is a free parameter
+    # Only N is a free parameter in the fit because we use the KaRIn balanced to constrain
     def model_fixed(k, N):
         return nadir_model(k, A_b_fixed, lam_b_fixed, s_param_fixed, N)
 

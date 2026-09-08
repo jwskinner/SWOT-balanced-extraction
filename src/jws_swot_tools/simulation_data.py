@@ -340,7 +340,6 @@ def load_sim_on_karin_nadir_grids(karin, nadir, data_folder, matched_dates):
 
     # ---- main loop ----
     for d in matched_dates:
-        print(d)
         fpath = os.path.join(data_folder, f"snapshot_{d.strftime(DATE_FMT)}.mat")
         if not os.path.exists(fpath):
             continue

@@ -30,11 +30,16 @@ def sin2_window_func(n):
     return np.sqrt(8/3) * np.sin(np.pi * np.arange(n) / n) ** 2
 
 def mean_power_spectrum(data, window, dim, average_dims):
-    
-    """Computes the power spectrum using xarray"""
+    """Computes the one-sided power spectrum using xarray"""
     
     pspec = xrft.power_spectrum(data * window, dim=dim, detrend=None)
-    pspec_one_sided = 2 * pspec  # one-sided spectrum
+    
+    # Isolate positive frequencies only
+    freq_coord = f"freq_{dim}"
+    pspec_pos = pspec.where(pspec[freq_coord] > 0, drop=True)
+    
+    # Conserve the energy just dropped
+    pspec_one_sided = 2 * pspec_pos  
     
     mean = pspec_one_sided.mean(dim=average_dims, skipna=True)
     

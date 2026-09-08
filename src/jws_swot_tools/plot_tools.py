@@ -189,11 +189,11 @@ def plot_spectral_fits(karin,
     mid_k = int(karin.track_length / 2)
     mid_n = int(nadir.track_length / 2)
 
-    k_karin = karin.wavenumbers_cpkm[mid_k:]
-    k_nadir = nadir.wavenumbers_cpkm[mid_n:]
+    k_karin = karin.wavenumbers_cpkm #[mid_k:] the spectra are onsided now by default
+    k_nadir = nadir.wavenumbers_cpkm #[mid_n:]
 
-    karin_dots = spec_k_actual[mid_k:] if spec_k_actual is not None else karin.spec_alongtrack_av[mid_k:]
-    nadir_dots = spec_n_actual[mid_n:] if spec_n_actual is not None else nadir.spec_alongtrack_av[mid_n:]
+    karin_dots = spec_k_actual if spec_k_actual is not None else karin.spec_alongtrack_av
+    nadir_dots = spec_n_actual if spec_n_actual is not None else nadir.spec_alongtrack_av
 
     if taper:
         spbalanced    = swot.balanced_model_tapered(k_karin[1:], *poptcwg_karin[0:3])
