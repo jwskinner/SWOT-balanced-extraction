@@ -19,7 +19,7 @@ from concurrent.futures import ProcessPoolExecutor
 t = swot.Timer()
 
 data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/CALVAL_VD/'
-data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
+#data_folder = '/expanse/lustre/projects/cit197/jskinner1/SWOT/SCIENCE_VD/'
 pass_number = 9
 lat_min = 28.0 #28
 lat_max = 35.0 #35

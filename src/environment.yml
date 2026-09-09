@@ -12,7 +12,7 @@ dependencies:
   - scipy
   - matplotlib
   - netcdf4
-  - xrft
+  - xrft=0.3.2
   - pandas
   - earthaccess
   - h5py
@@ -21,6 +21,9 @@ dependencies:
   - cartopy
   - ipython
   - pyjuliacall
+  - jupyterlab
+  - notebook
+  - dask
   
   # Build the module with pip
   - pip:
